@@ -12,62 +12,62 @@ import sys
 print = lambda *args, **kwargs: builtins.print(*args, **kwargs, flush=True)
 
 # 👉 Add the scrubber here, after all imports:
+
 def scrub_names(text):
     lines = text.strip().split("\n")
     clean_lines = []
-    for line in lines:
-        l = line.lower()
-        
-        # Skip lines with common court official phrases
-        if any(keyword in l for keyword in ["de griffier", "mr.", "(getekend)", "griffier", "de voorzitter", "grififer"]):
-            continue
-        
-        # Skip lines starting with mr. (case variations)
-        if re.match(r"^.{0,5}mr\. ", l):
-            continue
-        
-        # Skip lines with specific court signatures and common endings
-        skip_patterns = [
-            r"waarvan opgemaakt dit proces-verbaal.*\([A-Z]",
-            r"het hof bevestigt.*\([A-Z]",
-            r"aldus vastgesteld en uitgesproken.*\([A-Z]",
-            r"veroordeelt.*proceskosten.*\([A-Z]",
-            r"voormelde kamer.*\([A-Z]",
-            r"de grififer.*het lid.*\([A-Z]",
-            r"het lid van de voormelde kamer.*\([A-Z]"
-        ]
-        
-        if any(re.search(pattern, l) for pattern in skip_patterns):
-            continue
-        
-        # Comprehensive Dutch name pattern in parentheses
-        dutch_name_pattern = r"\([A-Z]\.?[A-Z]?\.?[A-Z]?\.?[A-Z]?\.?\s*(?:van\s+der\s+|van\s+den\s+|van\s+|den\s+|de\s+|der\s+)?[A-Z][a-z]+(?:-[A-Z][a-z]+)?\)"
-        
-        # Skip lines that contain two or more Dutch names in parentheses
-        if len(re.findall(dutch_name_pattern, line)) >= 2:
-            continue
-        
-        # Skip lines that end with Dutch names in parentheses (signature lines)
-        if re.search(dutch_name_pattern + r"\s*" + dutch_name_pattern + r"\s*$", line):
-            continue
-        
-        # Skip lines with "(c:XX)" pattern
-        if re.search(r"\(c:\d+\)", l):
-            continue
-        
-        # Remove inline Dutch names in parentheses but keep the rest of the line
-        line_cleaned = re.sub(dutch_name_pattern, "", line)
-        line_cleaned = re.sub(r"\(c:\d+\)", "", line_cleaned)
-        
-        # Clean up extra whitespace and punctuation left behind
-        line_cleaned = re.sub(r'\s+', ' ', line_cleaned).strip()
-        line_cleaned = re.sub(r'^\s*[,\.\-–]\s*', '', line_cleaned)  # Leading punctuation
-        line_cleaned = re.sub(r'\s*[,\.\-–]\s*$', '', line_cleaned)  # Trailing punctuation
-        
-        # Only add line if it has meaningful content after cleaning
-        if line_cleaned and not line_cleaned.isspace() and len(line_cleaned) > 2:
-            clean_lines.append(line_cleaned)
     
+    # Pattern for names in parentheses, now supporting diacritics
+    dutch_name_paren = r"\([A-Z]\.?[A-Z]?\.?[A-Z]?\.?[A-Z]?\.?\s*(?:van\s+der\s+|van\s+den\s+|van\s+|den\s+|de\s+|der\s+)?[A-Z][a-zA-Zéèëöüäïáàíóúñçß\-']+\)"
+    
+    # Pattern for names after roles like gemachtigde, raadsman, etc.
+    role_name = r"(gemachtigde|raadsman|advocaat|mr\.?)\s*[:\-]?\s*(de heer|mevrouw|mr\.)?\s*[A-Z]\.?[A-Z]?\.?[A-Z]?\.?\s*(?:van\s+der\s+|van\s+den\s+|van\s+|den\s+|de\s+|der\s+)?[A-Z][a-zA-Zéèëöüäïáàíóúñçß\-']+"
+
+    # Common line-start signatures
+    skip_prefixes = [
+        r"waarvan opgemaakt dit proces-verbaal",
+        r"het gerechtshof verklaart het verzet ongegrond",
+        r"aldus vastgesteld.*",
+        r"ten overstaan van.*",
+        r"mr\..*",
+        r"de griffier.*",
+        r"de voorzitter.*",
+    ]
+
+    for line in lines:
+        l = line.lower().strip()
+
+        # Hard skip: full line matches
+        if any(re.match(pat, l) for pat in skip_prefixes):
+            continue
+        
+        # Hard skip: line has 2+ Dutch-style names in parentheses
+        if len(re.findall(dutch_name_paren, line)) >= 2:
+            continue
+        
+        # Hard skip: line *ends* with a known name in parentheses
+        if re.search(f"{dutch_name_paren}\s*$", line):
+            continue
+
+        # Hard skip: contains name after a title/role (e.g. gemachtigde)
+        if re.search(role_name, line, re.IGNORECASE):
+            continue
+        
+        # Soft replace: clean inline name in parentheses
+        line_cleaned = re.sub(dutch_name_paren, "", line)
+
+        # Soft replace: clean inline role-based name
+        line_cleaned = re.sub(role_name, "", line_cleaned, flags=re.IGNORECASE)
+
+        # Clean artifacts
+        line_cleaned = re.sub(r"\s+", " ", line_cleaned).strip()
+        line_cleaned = re.sub(r"^\s*[,\.\-–]\s*", "", line_cleaned)
+        line_cleaned = re.sub(r"\s*[,\.\-–]\s*$", "", line_cleaned)
+
+        # Only keep lines with meaningful content
+        if line_cleaned and len(line_cleaned) > 2:
+            clean_lines.append(line_cleaned)
+
     return "\n".join(clean_lines).strip()
 
 # Constants
@@ -80,7 +80,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 150
+        "max": 250
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
