@@ -49,4 +49,4 @@ def main():
 
     # 📥 Fetch data
     eclis = fetch_eclis()
-    uitspraken =
+    uitspraken = []
