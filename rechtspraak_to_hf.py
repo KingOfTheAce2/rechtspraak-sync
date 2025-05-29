@@ -4,11 +4,30 @@ import xml.etree.ElementTree as ET
 import json
 from datasets import Dataset
 from huggingface_hub import login
+import re
 
 # ✅ Force Python to flush output so GitHub shows it in logs
 import sys
 print = lambda *args, **kwargs: __builtins__.print(*args, **kwargs, flush=True)
 
+# 👉 Add the scrubber here, after all imports:
+def scrub_names(text):
+    lines = text.strip().split("\n")
+    clean_lines = []
+
+    for line in lines:
+        l = line.lower()
+
+        if any(keyword in l for keyword in ["de griffier", "mr.", "(getekend)", "griffier", "de voorzitter"]):
+            continue
+        if re.match(r"^.{0,5}mr\. ", l):
+            continue
+
+        clean_lines.append(line)
+
+    return "\n".join(clean_lines).strip()
+
+# Keep these below the function
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
 API_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
 CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
@@ -18,7 +37,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 20  # Change this later to 1000 or more
+        "max": 25  # Change this later to 1000 or more
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
@@ -63,13 +82,14 @@ def main():
     eclis = fetch_eclis()
     uitspraken = []
 
-    for ecli in eclis:
-        content = fetch_uitspraak(ecli)
-        if content:
-            uitspraken.append({
-                "ecli": ecli,
-                "uitspraak": content
-            })
+for ecli in eclis:
+    content = fetch_uitspraak(ecli)
+    if content:
+        content = scrub_names(content)
+        uitspraken.append({
+            "ecli": ecli,
+            "uitspraak": content
+        })
 
     print(f"[INFO] Total valid uitspraken collected: {len(uitspraken)}")
 
