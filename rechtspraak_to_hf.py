@@ -17,11 +17,43 @@ def scrub_names(text):
     clean_lines = []
     for line in lines:
         l = line.lower()
+        
+        # Skip lines with common court official phrases
         if any(keyword in l for keyword in ["de griffier", "mr.", "(getekend)", "griffier", "de voorzitter"]):
             continue
+        
+        # Skip lines starting with mr. (case variations)
         if re.match(r"^.{0,5}mr\. ", l):
             continue
-        clean_lines.append(line)
+        
+        # Skip lines with names in parentheses (like court officials)
+        if re.search(r"\([A-Z][a-z]*\.[A-Z][a-z]*\.[A-Z][a-z]*\.\s*[A-Z][a-z]*\)", line):
+            continue
+        
+        # Skip lines with initials and surnames in parentheses (broader pattern)
+        if re.search(r"\([A-Z]\.[A-Z]\.[A-Z]\.[A-Z]\.?\s*[A-Z][a-z]+\)", line):
+            continue
+        
+        # Skip lines with process-verbaal signatures
+        if "proces-verbaal" in l and "(" in line and ")" in line:
+            continue
+        
+        # Skip lines with "(c:XX)" pattern followed by names
+        if re.search(r"\(c:\d+\)", l):
+            continue
+        
+        # Skip lines that are mostly initials and names (common signature patterns)
+        if re.search(r"^\s*\([A-Z]\.?[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)\s*\([A-Z]\.?[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)\s*$", line):
+            continue
+        
+        # Remove inline names in parentheses but keep the rest of the line
+        line_cleaned = re.sub(r"\([A-Z]\.[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)", "", line)
+        line_cleaned = re.sub(r"\(c:\d+\)", "", line_cleaned)
+        
+        # Only add line if it has meaningful content after cleaning
+        if line_cleaned.strip():
+            clean_lines.append(line_cleaned.strip())
+    
     return "\n".join(clean_lines).strip()
 
 # Keep these below the function
@@ -34,7 +66,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 25  # Change this later to 1000 or more
+        "max": 50  # Change this later to 1000 or more
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
