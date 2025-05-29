@@ -26,33 +26,41 @@ def scrub_names(text):
         if re.match(r"^.{0,5}mr\. ", l):
             continue
         
-        # Skip lines with names in parentheses (like court officials)
-        if re.search(r"\([A-Z][a-z]*\.[A-Z][a-z]*\.[A-Z][a-z]*\.\s*[A-Z][a-z]*\)", line):
+        # Skip lines with names in parentheses - Dutch name patterns
+        # Pattern: (Initial. surname) or (Initial.Initial.Initial. surname)
+        if re.search(r"\([A-Z]\.[A-Z]?\.?[A-Z]?\.?\s*[A-Z][a-z]+\s*[A-Z]?[a-z]*\)", line):
             continue
         
-        # Skip lines with initials and surnames in parentheses (broader pattern)
-        if re.search(r"\([A-Z]\.[A-Z]\.[A-Z]\.[A-Z]\.?\s*[A-Z][a-z]+\)", line):
+        # Skip lines with multiple names in parentheses (with or without spaces between them)
+        if re.search(r"\([A-Z]\.[A-Z]?\.?[A-Z]?\.?\s*[a-z]+\s+[a-z]+\)\s*\([A-Z]\.[A-Z]?\.?[A-Z]?\.?\s*[a-z]+\s+[a-z]+\)", line):
             continue
         
-        # Skip lines with process-verbaal signatures
-        if "proces-verbaal" in l and "(" in line and ")" in line:
+        # Skip lines ending with court signatures - common endings
+        if re.search(r"Het Hof bevestigt.*\([A-Z]\..*\)\s*\([A-Z]\..*\)\s*$", line):
             continue
         
-        # Skip lines with "(c:XX)" pattern followed by names
+        # Skip process-verbaal signature lines
+        if re.search(r"Waarvan opgemaakt dit proces-verbaal.*\([A-Z]\..*\)", line):
+            continue
+        
+        # Skip lines with "(c:XX)" pattern
         if re.search(r"\(c:\d+\)", l):
             continue
         
-        # Skip lines that are mostly initials and names (common signature patterns)
-        if re.search(r"^\s*\([A-Z]\.?[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)\s*\([A-Z]\.?[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)\s*$", line):
+        # Skip lines that are just signatures (names in parentheses at end of line)
+        if re.search(r"^.*\([A-Z]\.[A-Z]?\.?\s*[a-z]+\s+[a-z]+\)\s*\([A-Z]\.[A-Z]?\.?\s*[a-z]+\s+[a-z]+\)\s*$", line):
             continue
         
         # Remove inline names in parentheses but keep the rest of the line
-        line_cleaned = re.sub(r"\([A-Z]\.[A-Z]\.?[A-Z]?\.?\s*[A-Z][a-z]+\)", "", line)
+        line_cleaned = re.sub(r"\([A-Z]\.[A-Z]?\.?[A-Z]?\.?\s*[a-z]+\s+[a-z]+\)", "", line)
         line_cleaned = re.sub(r"\(c:\d+\)", "", line_cleaned)
         
+        # Clean up extra whitespace
+        line_cleaned = re.sub(r'\s+', ' ', line_cleaned).strip()
+        
         # Only add line if it has meaningful content after cleaning
-        if line_cleaned.strip():
-            clean_lines.append(line_cleaned.strip())
+        if line_cleaned and not line_cleaned.isspace():
+            clean_lines.append(line_cleaned)
     
     return "\n".join(clean_lines).strip()
 
@@ -66,7 +74,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 50  # Change this later to 1000 or more
+        "max": 100  # Change this later to 1000 or more
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
