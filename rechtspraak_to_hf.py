@@ -5,26 +5,23 @@ import json
 from datasets import Dataset
 from huggingface_hub import login
 import re
+import builtins
 
 # ✅ Force Python to flush output so GitHub shows it in logs
 import sys
-print = lambda *args, **kwargs: __builtins__.print(*args, **kwargs, flush=True)
+print = lambda *args, **kwargs: builtins.print(*args, **kwargs, flush=True)
 
 # 👉 Add the scrubber here, after all imports:
 def scrub_names(text):
     lines = text.strip().split("\n")
     clean_lines = []
-
     for line in lines:
         l = line.lower()
-
         if any(keyword in l for keyword in ["de griffier", "mr.", "(getekend)", "griffier", "de voorzitter"]):
             continue
         if re.match(r"^.{0,5}mr\. ", l):
             continue
-
         clean_lines.append(line)
-
     return "\n".join(clean_lines).strip()
 
 # Keep these below the function
@@ -78,27 +75,26 @@ def main():
         raise ValueError("HF_TOKEN environment variable not set")
     login(token=hf_token)
     print("[INFO] Logged in to HuggingFace Hub.")
-
+    
     eclis = fetch_eclis()
     uitspraken = []
-
-for ecli in eclis:
-    content = fetch_uitspraak(ecli)
-    if content:
-        content = scrub_names(content)
-        uitspraken.append({
-            "ecli": ecli,
-            "uitspraak": content
-        })
-
+    
+    for ecli in eclis:
+        content = fetch_uitspraak(ecli)
+        if content:
+            content = scrub_names(content)
+            uitspraken.append({
+                "ecli": ecli,
+                "uitspraak": content
+            })
+    
     print(f"[INFO] Total valid uitspraken collected: {len(uitspraken)}")
-
+    
     if not uitspraken:
         print("[WARN] No uitspraken found. Skipping upload.")
         return
-
+    
     save_to_jsonl(uitspraken)
-
     print("[INFO] Uploading dataset to HuggingFace...")
     dataset = Dataset.from_json("uitspraken.jsonl")
     dataset.push_to_hub(HF_REPO)
