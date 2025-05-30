@@ -1,9 +1,9 @@
 name: Import Rechtspraak
 
 on:
-  schedule:         # every night at 02:15 UTC
+  schedule:         # Run every night at 02:15 UTC
     - cron:  '15 2 * * *'
-  workflow_dispatch:   # manual trigger button
+  workflow_dispatch:  # Allow manual triggering from GitHub UI
 
 jobs:
   ingest:
@@ -13,7 +13,7 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v4
       with:
-        persist-credentials: true     # so we can push state.db back
+        persist-credentials: true     # needed to push changes to the repo
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -33,7 +33,7 @@ jobs:
       run: |
         python rechtspraak_ingest.py
 
-        # commit state.db if it changed
+        # Commit state.db if it changed
         git add state.db
         if git diff --cached --quiet; then
           echo "state.db unchanged"
