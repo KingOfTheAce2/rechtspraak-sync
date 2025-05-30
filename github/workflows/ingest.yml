@@ -1,0 +1,42 @@
+name: Import Rechtspraak
+
+on:
+  schedule:         # every night at 02:15 UTC
+    - cron:  '15 2 * * *'
+  workflow_dispatch:   # manual trigger button
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: true     # so we can push state.db back
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install requirements
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run importer
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        GIT_AUTHOR_NAME: github-actions
+        GIT_AUTHOR_EMAIL: actions@github.com
+      run: |
+        python rechtspraak_ingest.py
+        # commit state.db if it changed
+        if git diff --quiet state.db; then
+          echo "state.db unchanged"
+        else
+          git add state.db
+          git commit -m "chore: update state.db [skip ci]"
+          git push
+        fi
