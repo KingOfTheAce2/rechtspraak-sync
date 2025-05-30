@@ -46,12 +46,13 @@ SCRUBBER     = UltraNameScrubber(JUDGE_FILE)
 
 def fetch_latest_eclis(limit: int = MAX_CASES) -> List[Tuple[str, str]]:
     """Return list of (ECLI, date) tuples for the latest *limit* rulings."""
-    params = {
-        "max":   limit,
-        "result": "index",          # metadata only – we fetch full text next
-        "sort":   "datum desc",
-        "fields": "ecli,datum",
-    }
+params = {
+    "output": "json",
+    "max": "250",
+    "sort": "datum desc",
+    "publicatiedatum": f"{start.isoformat()}..{end.isoformat()}",
+    "facet": "publicatiedatum"
+}
     r = requests.get(API_URL_LIST, params=params, timeout=30)
     r.raise_for_status()
     data = r.json()
