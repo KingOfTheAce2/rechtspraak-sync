@@ -13,62 +13,62 @@ print = lambda *args, **kwargs: builtins.print(*args, **kwargs, flush=True)
 
 # 👉 Add the scrubber here, after all imports:
 
-def scrub_names(text):
-    lines = text.strip().split("\n")
-    clean_lines = []
-    
-    # Pattern for names in parentheses, now supporting diacritics
-    dutch_name_paren = r"\([A-Z]\.?[A-Z]?\.?[A-Z]?\.?[A-Z]?\.?\s*(?:van\s+der\s+|van\s+den\s+|van\s+|den\s+|de\s+|der\s+)?[A-Z][a-zA-Zéèëöüäïáàíóúñçß\-']+\)"
-    
-    # Pattern for names after roles like gemachtigde, raadsman, etc.
-    role_name = r"(gemachtigde|raadsman|advocaat|mr\.?)\s*[:\-]?\s*(de heer|mevrouw|mr\.)?\s*[A-Z]\.?[A-Z]?\.?[A-Z]?\.?\s*(?:van\s+der\s+|van\s+den\s+|van\s+|den\s+|de\s+|der\s+)?[A-Z][a-zA-Zéèëöüäïáàíóúñçß\-']+"
+# ---------- name-scrubbing helpers (compile once) ---------------------------
+NAME_PREFIXES   = r"(?:w\.g\.|\(w\.g\.\)|\(get\.\)|get\.)\s*"
 
-    # Common line-start signatures
-    skip_prefixes = [
-        r"waarvan opgemaakt dit proces-verbaal",
-        r"het gerechtshof verklaart het verzet ongegrond",
-        r"aldus vastgesteld.*",
-        r"ten overstaan van.*",
-        r"mr\..*",
-        r"de griffier.*",
-        r"de voorzitter.*",
-    ]
+INITIALS        = r"(?:[A-Z]\.\s*){1,6}"                    # A. | A.B. | A. B. C. …
 
-    for line in lines:
-        l = line.lower().strip()
+# Dutch & common lowercase prefixes that can lead a surname
+LOWER_PREFIXES  = [
+    "van der", "van den", "van", "den", "de", "der", "von",
+    "ten", "ter", "te",                       # lower-case words
+    r"'t", r"'s",                             # ’t Hoen, ’s-Gravesande
+]
+APOSTRO_PREFIX  = r"[dDlL]'"                  # d'Ambrosio, l'Isle
 
-        # Hard skip: full line matches
-        if any(re.match(pat, l) for pat in skip_prefixes):
+PREFIX_RE       = r"(?:{}|{})".format(
+    "|".join(map(re.escape, LOWER_PREFIXES)),
+    APOSTRO_PREFIX
+)
+
+SURNAME_CORE    = r"[A-Z][\wÀ-ÖØ-öø-ÿ'’\-]+"
+SURNAME         = rf"(?:{PREFIX_RE}\s+|-)?{SURNAME_CORE}(?:[-\s]{SURNAME_CORE})*"
+
+INLINE_NAME_RE  = re.compile(rf"{NAME_PREFIXES}?{INITIALS}{SURNAME}", re.I)
+
+HARD_SKIP_RE    = re.compile(
+    r"^(?:waarvan opgemaakt dit proces-verbaal|het gerechtshof verklaart het verzet ongegrond|"
+    r"aldus vastgesteld|aldus gedaan|aldus gewezen|aldus uitgesproken|"
+    r"ten overstaan van|in tegenwoordigheid van|meervoudige kamer|"
+    r"mr\.\s|de griffier|de voorzitter)",
+    re.I,
+)
+
+# ---------- main function ----------------------------------------------------
+def scrub_names(text: str) -> str:
+    cleaned_lines = []
+
+    for raw in text.splitlines():
+        line = raw.strip()
+
+        # 1. toss boiler-plate lines
+        if HARD_SKIP_RE.match(line):
             continue
-        
-        # Hard skip: line has 2+ Dutch-style names in parentheses
-        if len(re.findall(dutch_name_paren, line)) >= 2:
-            continue
-        
-        # Hard skip: line *ends* with a known name in parentheses
-        if re.search(f"{dutch_name_paren}\s*$", line):
+
+        # 2. toss lines holding ≥2 names or ending in a name
+        if len(INLINE_NAME_RE.findall(line)) >= 2 or INLINE_NAME_RE.search(line + " "):
             continue
 
-        # Hard skip: contains name after a title/role (e.g. gemachtigde)
-        if re.search(role_name, line, re.IGNORECASE):
-            continue
-        
-        # Soft replace: clean inline name in parentheses
-        line_cleaned = re.sub(dutch_name_paren, "", line)
+        # 3. drop any stray inline name(s)
+        line = INLINE_NAME_RE.sub("", line)
 
-        # Soft replace: clean inline role-based name
-        line_cleaned = re.sub(role_name, "", line_cleaned, flags=re.IGNORECASE)
+        # 4. tidy up spacing / punctuation
+        line = re.sub(r"\s+", " ", line).strip(" ,.–\u00A0")
 
-        # Clean artifacts
-        line_cleaned = re.sub(r"\s+", " ", line_cleaned).strip()
-        line_cleaned = re.sub(r"^\s*[,\.\-–]\s*", "", line_cleaned)
-        line_cleaned = re.sub(r"\s*[,\.\-–]\s*$", "", line_cleaned)
+        if line and len(line) > 2:
+            cleaned_lines.append(line)
 
-        # Only keep lines with meaningful content
-        if line_cleaned and len(line_cleaned) > 2:
-            clean_lines.append(line_cleaned)
-
-    return "\n".join(clean_lines).strip()
+    return "\n".join(cleaned_lines).strip()
 
 # Constants
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
@@ -80,7 +80,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 250
+        "max": 500
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
