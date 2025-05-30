@@ -39,10 +39,14 @@ jobs:
       run: |
         python rechtspraak_ingest.py
 
-        # Commit state.db if it changed
-        git add state.db
-        if git diff --cached --quiet; then
-          echo "state.db unchanged"
+        if [ -f state.db ]; then
+          git add state.db
+          if git diff --cached --quiet; then
+            echo "state.db unchanged"
+          else
+            git commit -m "chore: update state.db [skip ci]"
+            git push
+          fi
         else
-          git commit -m "chore: update state.db [skip ci]"
-          git push
+          echo "No state.db file created — nothing to commit."
+        fi
