@@ -6,7 +6,7 @@ This module does **one thing only**: replace personal names with the token
 
 Design choices  
 --------------  
-* **Judge list only** – Hard list of ~8 k official judge names is loaded from
+* **Judge list only** – Hard list of ~6 k official judge names is loaded from
   *judge_names.json* and removed **everywhere** it appears.
 * **Role‑based scrubbing** – Any name that immediately follows common role
   words (e.g. *gedaagde, eiser, gemachtigde*) is removed.  Only the name is
