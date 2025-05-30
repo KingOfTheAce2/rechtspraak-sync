@@ -1,8 +1,10 @@
+
 #!/usr/bin/env python3
 
 import os
 import sys
 import time
+import datetime as dt
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -24,14 +26,21 @@ JUDGE_FILE = Path(__file__).with_name("judge_names.json")
 SCRUBBER = UltraNameScrubber(JUDGE_FILE)
 
 def list_eclis(limit: int):
+    today = dt.date.today()
+    start = today - dt.timedelta(days=90)
+
     params = {
         "facet": "publicatiedatum",
+        "publicatiedatum": f"{start.isoformat()}..{today.isoformat()}",
         "zaaknummer": "false",
         "max": str(limit),
         "output": "json"
     }
+
     response = requests.get(API_URL_LIST, params=params)
+    print(f"🔗 Requested: {response.url}")
     response.raise_for_status()
+
     try:
         data = response.json()
         return [doc["id"].split("/")[-1] for doc in data.get("results", [])]
@@ -55,7 +64,11 @@ def main():
         try:
             raw_text = fetch_text(ecli)
             clean_text = SCRUBBER.scrub_names(raw_text)
-            records.append({"ecli": ecli, "text": clean_text})
+            records.append({
+                "url": f"https://data.rechtspraak.nl/uitspraken/content/{ecli}",
+                "content": clean_text,
+                "source": "rechtspraak"
+            })
             time.sleep(SLEEP_BETWEEN)
         except Exception as e:
             print(f"Failed to process {ecli}: {e}", file=sys.stderr)
