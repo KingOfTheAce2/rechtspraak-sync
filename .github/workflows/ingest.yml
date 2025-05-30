@@ -33,4 +33,4 @@ jobs:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         LIMIT: ${{ github.event.inputs.limit || 300 }}
       run: |
-        python rechtspraak_ingest_clean.py
+        python rechtspraak_ingest.py
