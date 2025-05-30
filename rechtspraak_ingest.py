@@ -44,20 +44,23 @@ SCRUBBER     = UltraNameScrubber(JUDGE_FILE)
 #  HELPERS
 # ─────────────────────────────────────────────────────────────
 
-def fetch_latest_eclis(limit: int = MAX_CASES) -> List[Tuple[str, str]]:
-    """Return list of (ECLI, date) tuples for the latest *limit* rulings."""
-params = {
-    "output": "json",
-    "max": "250",
-    "sort": "datum desc",
-    "publicatiedatum": f"{start.isoformat()}..{end.isoformat()}",
-    "facet": "publicatiedatum"
-}
+def fetch_latest_eclis(limit: int) -> list[str]:
+    today = dt.date.today()
+    start = today - dt.timedelta(days=90)
+    end = today - dt.timedelta(days=1)
+
+    params = {
+        "output": "json",
+        "max": str(limit),
+        "sort": "datum desc",
+        "publicatiedatum": f"{start.isoformat()}..{end.isoformat()}",
+        "facet": "publicatiedatum"
+    }
+
     r = requests.get(API_URL_LIST, params=params, timeout=30)
     r.raise_for_status()
     data = r.json()
-    return [(item["ecli"], item["datum"]) for item in data["uitspraken"]]
-
+    return [item["id"].split("/")[-1] for item in data.get("results", [])]
 
 def fetch_full_text(ecli: str) -> str:
     """Download raw XML string for one ruling."""
