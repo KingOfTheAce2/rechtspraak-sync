@@ -37,7 +37,7 @@ LIMIT = int(os.environ.get("LIMIT", "0"))
 # ─────────────────────────────────────────────────────────────
 #  LOCAL SCRUBBER
 # ─────────────────────────────────────────────────────────────
-from name_scrubber import UltraNameScrubber  # ← updated import
+from name_scrubber import UltraNameScrubber
 
 # ─────────────────────────────────────────────────────────────
 #  CONFIGURATION
@@ -78,14 +78,7 @@ def _set_last_date(db: sqlite3.Connection, date_: dt.date) -> None:
     db.commit()
 
 def _already_seen(db: sqlite3.Connection, ecli: str) -> bool:
-    return (
-        db.execute("SELECT 1 FROM seen_ecli WHERE ecli = ?", (ecli,)).fetchone()
-        is not None
-    )
+    return False  # Always allow overwrite
 
 def _mark_seen(db: sqlite3.Connection, ecli: str) -> None:
     db.execute("INSERT OR IGNORE INTO seen_ecli VALUES (?)", (ecli,))
-
-# ─────────────────────────────────────────────────────────────
-#  RECHTSPRAAK API HELPERS
-# ─────────────────────────────────────────────────────────────
