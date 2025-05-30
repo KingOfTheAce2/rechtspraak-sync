@@ -13,62 +13,71 @@ print = lambda *args, **kwargs: builtins.print(*args, **kwargs, flush=True)
 
 # 👉 Add the scrubber here, after all imports:
 
-# ---------- name-scrubbing helpers (compile once) ---------------------------
-NAME_PREFIXES   = r"(?:w\.g\.|\(w\.g\.\)|\(get\.\)|get\.)\s*"
+# ---------- helpers (compile once) ------------------------------------------
+NAME_PREFIXES = r"(?:w\.g\.|\(w\.g\.\)|\(get\.\)|get\.|mr\.?|mrs\.?|mw\.?|dr\.?|drs\.?)\s*"
 
-INITIALS        = r"(?:[A-Z]\.\s*){1,6}"                    # A. | A.B. | A. B. C. …
+INITIALS      = r"(?:[A-Z]\.\s*){1,6}"                    # A. | A.B. | A. B. C. …
 
-# Dutch & common lowercase prefixes that can lead a surname
-LOWER_PREFIXES  = [
+LOWER_PREFIXES = [
     "van der", "van den", "van", "den", "de", "der", "von",
-    "ten", "ter", "te",                       # lower-case words
-    r"'t", r"'s",                             # ’t Hoen, ’s-Gravesande
+    "ten", "ter", "te",           # e.g. ten Bosch
+    r"'t", r"'s",                 # ’t Hoen, ’s-Gravesande
 ]
-APOSTRO_PREFIX  = r"[dDlL]'"                  # d'Ambrosio, l'Isle
+APOSTRO_PREFIX = r"[dDlL]'"
 
-PREFIX_RE       = r"(?:{}|{})".format(
+PREFIX_RE      = r"(?:{}|{})".format(
     "|".join(map(re.escape, LOWER_PREFIXES)),
     APOSTRO_PREFIX
 )
 
-SURNAME_CORE    = r"[A-Z][\wÀ-ÖØ-öø-ÿ'’\-]+"
-SURNAME         = rf"(?:{PREFIX_RE}\s+|-)?{SURNAME_CORE}(?:[-\s]{SURNAME_CORE})*"
+SURNAME_CORE   = r"[A-Z][\wÀ-ÖØ-öø-ÿ'’\-]+"
+SURNAME        = rf"(?:{PREFIX_RE}\s+|-)?{SURNAME_CORE}(?:[-\s]{SURNAME_CORE})*"
 
-INLINE_NAME_RE  = re.compile(rf"{NAME_PREFIXES}?{INITIALS}{SURNAME}", re.I)
+INLINE_NAME_RE = re.compile(rf"{NAME_PREFIXES}?{INITIALS}{SURNAME}", re.I)
 
-HARD_SKIP_RE    = re.compile(
+# Lines that are always meta-data / signatures
+HARD_SKIP_RE = re.compile(
     r"^(?:waarvan opgemaakt dit proces-verbaal|het gerechtshof verklaart het verzet ongegrond|"
     r"aldus vastgesteld|aldus gedaan|aldus gewezen|aldus uitgesproken|"
-    r"ten overstaan van|in tegenwoordigheid van|meervoudige kamer|"
+    r"gewezen door|gegeven door|uitgesproken in het openbaar|"
+    r"ten overstaan van|in tegenwoordigheid van|meervoudige kamer|enkelvoudige kamer|"
     r"mr\.\s|de griffier|de voorzitter)",
     re.I,
 )
 
+# Lines that are nothing but surnames (no initials), often two or more
+NAME_WORD      = rf"(?:{PREFIX_RE}\s+)?{SURNAME_CORE}"
+SURNAME_ONLY_RE = re.compile(rf"^(?:{NAME_WORD})(?:\s+{NAME_WORD}){{1,6}}$", re.I)
+
 # ---------- main function ----------------------------------------------------
 def scrub_names(text: str) -> str:
-    cleaned_lines = []
+    kept = []
 
     for raw in text.splitlines():
         line = raw.strip()
 
-        # 1. toss boiler-plate lines
+        # 1. Discard pure boiler-plate
         if HARD_SKIP_RE.match(line):
             continue
 
-        # 2. toss lines holding ≥2 names or ending in a name
+        # 2. Drop lines holding ≥2 inline names or ending in a name
         if len(INLINE_NAME_RE.findall(line)) >= 2 or INLINE_NAME_RE.search(line + " "):
             continue
 
-        # 3. drop any stray inline name(s)
+        # 3. Drop lines that are only surnames without initials
+        if SURNAME_ONLY_RE.match(line):
+            continue
+
+        # 4. Remove any stray inline name(s)
         line = INLINE_NAME_RE.sub("", line)
 
-        # 4. tidy up spacing / punctuation
+        # 5. Tidy up
         line = re.sub(r"\s+", " ", line).strip(" ,.–\u00A0")
 
         if line and len(line) > 2:
-            cleaned_lines.append(line)
+            kept.append(line)
 
-    return "\n".join(cleaned_lines).strip()
+    return "\n".join(kept).strip()
 
 # Constants
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
