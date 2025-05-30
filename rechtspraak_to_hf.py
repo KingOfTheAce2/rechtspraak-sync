@@ -4,6 +4,7 @@ import re
 import json
 import requests
 import xml.etree.ElementTree as ET
+import builtins  # ✅ REQUIRED for the print override below
 from pathlib import Path
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
