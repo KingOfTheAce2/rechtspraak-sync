@@ -3,7 +3,12 @@ name: Import Rechtspraak
 on:
   schedule:         # Run every night at 02:15 UTC
     - cron:  '15 2 * * *'
-  workflow_dispatch:  # Allow manual triggering from GitHub UI
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Optional: Limit number of documents to ingest'
+        required: false
+        default: '0'  # Allow manual triggering from GitHub UI
 
 jobs:
   ingest:
@@ -27,6 +32,7 @@ jobs:
 
     - name: Run importer
       env:
+        LIMIT: ${{ github.event.inputs.limit || 0 }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
         GIT_AUTHOR_NAME: github-actions
         GIT_AUTHOR_EMAIL: actions@github.com
@@ -40,4 +46,3 @@ jobs:
         else
           git commit -m "chore: update state.db [skip ci]"
           git push
-        fi
