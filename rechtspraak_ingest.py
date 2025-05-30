@@ -82,3 +82,50 @@ def _already_seen(db: sqlite3.Connection, ecli: str) -> bool:
 
 def _mark_seen(db: sqlite3.Connection, ecli: str) -> None:
     db.execute("INSERT OR IGNORE INTO seen_ecli VALUES (?)", (ecli,))
+
+# ─────────────────────────────────────────────────────────────
+#  INGEST + UPLOAD LOOP
+# ─────────────────────────────────────────────────────────────
+
+def main() -> None:
+    login(os.environ["HF_TOKEN"])
+    db = _open_db()
+    current = dt.date.today()
+
+    while True:
+        date_from = _get_last_date(db)
+        if date_from >= current:
+            print("Ingestion complete.")
+            break
+
+        # Determine batch size
+        delta = BACKLOG_SLICE if (current - date_from).days > BACKLOG_SLICE else DAILY_SLICE
+        date_to = date_from + dt.timedelta(days=delta)
+
+        print(f"Fetching cases: {date_from} → {date_to}")
+        eclis = _list_eclis(date_from.isoformat(), date_to.isoformat())
+        if LIMIT and len(eclis) > LIMIT:
+            eclis = eclis[:LIMIT]
+
+        print(f"Found {len(eclis)} cases.")
+
+        rows = []
+        for ecli in eclis:
+            try:
+                raw = _fetch_ecli(ecli)
+                clean = SCRUBBER.scrub_names(raw)
+                rows.append({"ecli": ecli, "text": clean})
+                _mark_seen(db, ecli)
+                time.sleep(SLEEP_BETWEEN)
+            except Exception as ex:
+                print(f"⚠️  Skipped {ecli}: {ex}", file=sys.stderr)
+
+        if rows:
+            print(f"Pushing {len(rows)} to Hugging Face → {HF_REPO}")
+            dataset = Dataset.from_list(rows)
+            dataset.push_to_hub(HF_REPO)
+
+        _set_last_date(db, date_to)
+
+if __name__ == "__main__":
+    main()
