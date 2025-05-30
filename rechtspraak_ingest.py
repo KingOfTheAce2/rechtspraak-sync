@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """rechtspraak_ingest.py
 ───────────────────────
-Fetches Dutch court rulings from Rechtspraak.nl, scrubs names,
-and pushes results to Hugging Face. Tracks progress using `state.db`.
+Fetch Dutch court rulings from Rechtspraak.nl, scrub personal names,
+and push them to Hugging Face Hub. Tracks ingestion using `state.db`.
 """
 from __future__ import annotations
 
 import os
 import sys
 import time
-import json
 import sqlite3
 import datetime as dt
 from pathlib import Path
@@ -39,7 +38,7 @@ JUDGE_FILE    = Path(__file__).with_name("judge_names.json")
 SCRUBBER      = UltraNameScrubber(JUDGE_FILE)
 
 # ─────────────────────────────────────────────────────────────
-# DB FUNCTIONS
+# DATABASE
 # ─────────────────────────────────────────────────────────────
 def _open_db() -> sqlite3.Connection:
     db = sqlite3.connect(DB_PATH)
@@ -57,13 +56,13 @@ def _set_last_date(db: sqlite3.Connection, date_: dt.date) -> None:
     db.commit()
 
 def _already_seen(db: sqlite3.Connection, ecli: str) -> bool:
-    return False  # Overwrite always
+    return False  # Always allow overwrite
 
 def _mark_seen(db: sqlite3.Connection, ecli: str) -> None:
     db.execute("INSERT OR IGNORE INTO seen_ecli VALUES (?)", (ecli,))
 
 # ─────────────────────────────────────────────────────────────
-# RECHTSPRAAK API HELPERS
+# API HELPERS
 # ─────────────────────────────────────────────────────────────
 def _list_eclis(date_from: str, date_to: str) -> List[str]:
     params = {
@@ -74,8 +73,18 @@ def _list_eclis(date_from: str, date_to: str) -> List[str]:
         "output": "json",
     }
     r = requests.get(API_URL_LIST, params=params)
-    r.raise_for_status()
-    data = r.json()
+    print(f"🔗 Requested: {r.url}")
+    
+    if r.status_code != 200:
+        print(f"⚠️  API error {r.status_code} for {date_from} → {date_to}")
+        return []
+
+    try:
+        data = r.json()
+    except Exception as e:
+        print(f"⚠️  Failed to parse JSON for {date_from} → {date_to}: {e}")
+        return []
+
     return [doc["id"].split("/")[-1] for doc in data.get("results", [])]
 
 def _fetch_ecli(ecli: str) -> str:
@@ -85,7 +94,7 @@ def _fetch_ecli(ecli: str) -> str:
     return ET.tostring(root, encoding="unicode", method="text")
 
 # ─────────────────────────────────────────────────────────────
-# INGEST LOOP
+# MAIN INGEST LOGIC
 # ─────────────────────────────────────────────────────────────
 def main() -> None:
     login(os.environ["HF_TOKEN"])
@@ -95,7 +104,7 @@ def main() -> None:
     while True:
         date_from = _get_last_date(db)
         if date_from >= today:
-            print("Ingestion complete.")
+            print("✅ Ingestion complete.")
             break
 
         delta = BACKLOG_SLICE if (today - date_from).days > BACKLOG_SLICE else DAILY_SLICE
@@ -119,7 +128,7 @@ def main() -> None:
                 print(f"⚠️  Skipped {ecli}: {ex}", file=sys.stderr)
 
         if rows:
-            print(f"⬆️  Pushing {len(rows)} to Hugging Face: {HF_REPO}")
+            print(f"⬆️  Uploading {len(rows)} to Hugging Face → {HF_REPO}")
             dataset = Dataset.from_list(rows)
             dataset.push_to_hub(HF_REPO)
 
