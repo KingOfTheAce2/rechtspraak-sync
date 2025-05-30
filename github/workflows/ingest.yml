@@ -32,11 +32,12 @@ jobs:
         GIT_AUTHOR_EMAIL: actions@github.com
       run: |
         python rechtspraak_ingest.py
+
         # commit state.db if it changed
-        if git diff --quiet state.db; then
+        git add state.db
+        if git diff --cached --quiet; then
           echo "state.db unchanged"
         else
-          git add state.db
           git commit -m "chore: update state.db [skip ci]"
           git push
         fi
