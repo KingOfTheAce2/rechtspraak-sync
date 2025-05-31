@@ -18,7 +18,7 @@ def load_checkpoint():
     if os.path.exists(CHECKPOINT_FILE):
         with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"last_published": None, "done_eclis": []}
+    return {"last_published": None, "done_eclis": [], "empty_runs": 0}
 
 # Save checkpoint
 
@@ -81,19 +81,24 @@ def main():
     login(token=hf_token)
 
     print("[INFO] Fetching new ECLIs...")
-    new_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=20)
+    new_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=10)
     print(f"[INFO] Got {len(new_eclis)} ECLIs")
 
     uitspraken = []
+    skipped = 0
+    failed = 0
+
     for item in new_eclis:
         ecli = item["ecli"]
         published = item["published"]
 
         if ecli in checkpoint["done_eclis"]:
+            skipped += 1
             continue
 
         content = fetch_uitspraak(ecli)
         if not content:
+            failed += 1
             continue
 
         content = scrub_names(content)
@@ -107,12 +112,21 @@ def main():
         checkpoint["last_published"] = published
         time.sleep(1)
 
+    print(f"[INFO] Skipped already processed: {skipped}")
+    print(f"[INFO] Failed to fetch: {failed}")
+    print(f"[INFO] Collected new: {len(uitspraken)}")
+
     if uitspraken:
         print(f"[INFO] Uploading {len(uitspraken)} to HuggingFace")
         dataset = Dataset.from_list(uitspraken)
         dataset.push_to_hub(HF_REPO)
+        checkpoint["empty_runs"] = 0
     else:
-        print("[INFO] No new uitspraken to upload.")
+        checkpoint["empty_runs"] += 1
+        if checkpoint["empty_runs"] >= 5:
+            print("[WARN] ⚠️ No new uitspraken found in the last 5 runs.")
+        else:
+            print("[INFO] No new uitspraken to upload.")
 
     save_checkpoint(checkpoint)
     print("[INFO] Checkpoint updated.")
