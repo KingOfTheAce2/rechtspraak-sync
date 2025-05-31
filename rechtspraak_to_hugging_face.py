@@ -72,7 +72,7 @@ def fetch_eclis():
     params = {
         "type": "uitspraak",
         "return": "DOC",
-        "max": 25
+        "max": 250
     }
     r = requests.get(API_URL, params=params)
     r.raise_for_status()
