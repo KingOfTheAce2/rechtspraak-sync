@@ -81,7 +81,7 @@ def main():
     login(token=hf_token)
 
     print("[INFO] Fetching new ECLIs...")
-    new_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=10)
+    new_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=20)
     print(f"[INFO] Got {len(new_eclis)} ECLIs")
 
     uitspraken = []
