@@ -126,7 +126,6 @@ def main():
                 "content": content,
                 "source": "Rechtspraak"
             })
-            })
 
     print(f"[INFO] Total valid uitspraken collected: {len(uitspraken)}")
 
