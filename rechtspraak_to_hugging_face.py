@@ -127,7 +127,7 @@ def main():
         if content:
             content = scrub_names(content)
             uitspraken.append({
-                "url": ecli,
+                "url": f"https://uitspraken.rechtspraak.nl/details?id={ecli}",
                 "content": content,
                 "source": "Rechtspraak"
             })
