@@ -7,6 +7,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datasets import Dataset, DatasetDict
 from huggingface_hub import login
+import re
 
 CHECKPOINT_FILE = "checkpoint.json"
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
@@ -26,10 +27,40 @@ def save_checkpoint(state):
     with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-# Scrubbing logic goes here (reuse or import your function)
+# Balanced name scrubber
+
 def scrub_names(text):
-    # Minimal stub for now
-    return text
+    # Match initials + surname e.g. J.J. van der Weel or W.M.G. Eekhof-de Vries
+    name_pattern = r"(?:[A-Z]\.[ ]?){1,4}(?:van der |de |van |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?"
+
+    # Match (get.) or w.g. or (getekend) patterns
+    signature_markers = ["(get.)", "w.g.", "(getekend)"]
+
+    lines = text.splitlines()
+    clean_lines = []
+
+    for line in lines:
+        original_line = line
+
+        # Remove judge names while keeping structure
+        line = re.sub(name_pattern, "[REDACTED]", line)
+
+        # Remove signature prefixes
+        for marker in signature_markers:
+            line = line.replace(marker, "")
+
+        # Remove specific footers/boilerplate
+        if re.search(r"aldus vastgesteld|in tegenwoordigheid van|deze uitspraak|getekend", line, re.IGNORECASE):
+            continue
+
+        # Clean spacing
+        line = re.sub(r"\s+", " ", line).strip()
+        line = re.sub(r'^[,.:;-]+', '', line).strip()
+
+        if line:
+            clean_lines.append(line)
+
+    return "\n".join(clean_lines).strip()
 
 # Fetch and walk through paginated Atom feeds
 def fetch_ecli_batch(after_timestamp=None, max_pages=5):
