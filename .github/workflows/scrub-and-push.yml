@@ -1,34 +1,31 @@
-name: Scrub and Push to Hugging Face
+name: Run Rechtspraak Script
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  scrub-and-upload:
+  rechtspraak-job:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install datasets huggingface_hub requests
 
-    - name: Run scrubbing script
-      run: python scrub.py
-
-    - name: Push to Hugging Face Dataset Hub
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      run: |
-        from huggingface_hub import Repository
-        repo = Repository(local_dir=".", clone_from="vGassen/dutch-court-cases-rechtspraak", use_auth_token=True)
-        repo.push_to_hub()
-      shell: python
+      - name: Run rechtspraak_to_hugging_face.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python rechtspraak_to_hugging_face.py
