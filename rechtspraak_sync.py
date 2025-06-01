@@ -135,6 +135,9 @@ def main():
     raw_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=30)
     new_eclis = [e for e in raw_eclis if e["ecli"] not in checkpoint["done_eclis"]][:2000]
     print(f"[INFO] Got {len(new_eclis)} new ECLIs to process")
+    print(f"[DEBUG] Checkpoint last_published: {checkpoint['last_published']}")
+    print(f"[DEBUG] Total fetched raw ECLIs: {len(raw_eclis)}")
+    print(f"[DEBUG] Unique new ECLIs to process: {len(new_eclis)}")
 
     uitspraken = []
     failed = 0
@@ -185,3 +188,7 @@ def main():
 
     save_checkpoint(checkpoint)
     print("[INFO] Checkpoint updated.")
+
+if __name__ == "__main__":
+    print("[INFO] Starting sync script...")
+    main()
