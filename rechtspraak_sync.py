@@ -77,8 +77,21 @@ def fetch_ecli_batch(after_timestamp=None, max_pages=5):
         ns = {"atom": "http://www.w3.org/2005/Atom"}
 
         for entry in root.findall("atom:entry", ns):
-            ecli = entry.find("atom:id", ns).text
-            published = entry.find("atom:published", ns).text
+            ecli_el = entry.find("atom:id", ns)
+            published_el = entry.find("atom:published", ns)
+            updated_el = entry.find("atom:updated", ns)
+
+            if ecli_el is None:
+                print("[WARN] Skipping entry with no ECLI.")
+                continue
+
+            ecli = ecli_el.text
+            published = (published_el or updated_el).text if (published_el or updated_el) is not None else None
+
+            if published is None:
+                print(f"[WARN] Skipping entry {ecli} — no published or updated timestamp.")
+                continue
+
             collected.append({"ecli": ecli, "published": published})
 
         next_link = root.find("atom:link[@rel='next']", ns)
