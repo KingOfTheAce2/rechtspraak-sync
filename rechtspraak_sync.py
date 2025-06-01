@@ -1,14 +1,12 @@
-# STEP 1: create a persistent checkpoint file
-# This will track what we've already processed so we can continue later
 import os
 import json
 import time
+import datetime
 import requests
 import xml.etree.ElementTree as ET
-from datasets import Dataset, DatasetDict
-from huggingface_hub import login
-from datasets import load_dataset
 import re
+from datasets import Dataset, load_dataset
+from huggingface_hub import login
 
 CHECKPOINT_FILE = "checkpoint.json"
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
@@ -19,25 +17,18 @@ CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 with open("judge_names.json", "r", encoding="utf-8") as f:
     JUDGE_NAMES = json.load(f)
 
-# Load checkpoint if available
 def load_checkpoint():
     if os.path.exists(CHECKPOINT_FILE):
         with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {"last_published": None, "done_eclis": [], "empty_runs": 0}
 
-# Save checkpoint
-
 def save_checkpoint(state):
     with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-# Balanced name scrubber
-
 def scrub_names(text):
-    name_pattern = r"((?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?)"
     signature_markers = ["(get.)", "w.g.", "(getekend)"]
-
     lines = text.splitlines()
     clean_lines = []
 
@@ -46,15 +37,12 @@ def scrub_names(text):
             parts = full_name.split()
             if len(parts) < 2:
                 continue
-
-            # Split prefix and name
             prefix = " ".join(p for p in parts if "." not in p and p.lower() in {"mr.", "dhr.", "mw.", "prof.", "mr.drs.", "mr.dr.", "dr.", "drs."})
             name_part = full_name.replace(prefix, "").strip()
-
             if name_part in line:
                 line = line.replace(name_part, "[NAAM]")
 
-        # Regex fallback for initials + surname
+        # Regex fallback
         line = re.sub(r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)", r"\1[NAAM]\2", line)
 
         for marker in signature_markers:
@@ -71,10 +59,9 @@ def scrub_names(text):
 
     return "\n".join(clean_lines).strip()
 
-# Fetch and walk through paginated Atom feeds
 def fetch_ecli_batch(after_timestamp=None, max_pages=30):
     collected = []
-    page_url = API_URL + "?type=uitspraak&return=DOC&max=2000"
+    page_url = API_URL + "?type=uitspraak&return=DOC&max=100"
     if after_timestamp:
         page_url += f"&published-min={after_timestamp}"
 
@@ -89,18 +76,14 @@ def fetch_ecli_batch(after_timestamp=None, max_pages=30):
             ecli_el = entry.find("atom:id", ns)
             published_el = entry.find("atom:published", ns)
             updated_el = entry.find("atom:updated", ns)
-
             if ecli_el is None:
                 print("[WARN] Skipping entry with no ECLI.")
                 continue
-
             ecli = ecli_el.text
             published = (published_el or updated_el).text if (published_el or updated_el) is not None else None
-
-            if published is None:
-                print(f"[WARN] Skipping entry {ecli} — no published or updated timestamp.")
+            if not published:
+                print(f"[WARN] Skipping entry {ecli} — no published timestamp.")
                 continue
-
             collected.append({"ecli": ecli, "published": published})
 
         next_link = root.find("atom:link[@rel='next']", ns)
@@ -110,7 +93,6 @@ def fetch_ecli_batch(after_timestamp=None, max_pages=30):
 
     return collected
 
-# Fetch uitspraak XML by ECLI
 def fetch_uitspraak(ecli):
     try:
         r = requests.get(f"{CONTENT_URL}?id={ecli}")
@@ -125,7 +107,9 @@ def fetch_uitspraak(ecli):
     return None
 
 def main():
+    print(f"[TIME] Started at {datetime.datetime.now().isoformat()}")
     checkpoint = load_checkpoint()
+
     hf_token = os.getenv("HF_TOKEN")
     if not hf_token:
         raise ValueError("HF_TOKEN not set")
@@ -135,15 +119,13 @@ def main():
     raw_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=30)
     new_eclis = [e for e in raw_eclis if e["ecli"] not in checkpoint["done_eclis"]][:2000]
     print(f"[INFO] Got {len(new_eclis)} new ECLIs to process")
-    print(f"[DEBUG] Checkpoint last_published: {checkpoint['last_published']}")
-    print(f"[DEBUG] Total fetched raw ECLIs: {len(raw_eclis)}")
-    print(f"[DEBUG] Unique new ECLIs to process: {len(new_eclis)}")
 
     uitspraken = []
     failed = 0
-    for item in new_eclis:
+    for i, item in enumerate(new_eclis):
         ecli = item["ecli"]
         published = item["published"]
+        print(f"[INFO] Processing {i+1}/{len(new_eclis)}: {ecli}")
 
         content = fetch_uitspraak(ecli)
         if not content:
@@ -151,26 +133,24 @@ def main():
             failed += 1
             continue
 
-        content = scrub_names(content)
+        cleaned = scrub_names(content)
         uitspraken.append({
             "url": f"https://uitspraken.rechtspraak.nl/details?id={ecli}",
-            "content": content,
+            "content": cleaned,
             "source": "Rechtspraak"
         })
 
         checkpoint["done_eclis"].append(ecli)
         checkpoint["last_published"] = published
-        time.sleep(1)
+        time.sleep(0.1)
 
     print(f"[INFO] Failed to fetch: {failed}")
     print(f"[INFO] Collected new: {len(uitspraken)}")
 
     if uitspraken:
-        print(f"[INFO] Merging with existing dataset on Hugging Face...")
+        print(f"[INFO] Merging with existing dataset...")
         try:
-            existing = Dataset.from_list(
-                load_dataset(HF_REPO, split="train").to_list()
-            )
+            existing = Dataset.from_list(load_dataset(HF_REPO, split="train").to_list())
             combined = Dataset.from_list(existing.to_list() + uitspraken)
         except Exception as e:
             print(f"[WARN] No existing dataset or failed to load it: {e}")
@@ -190,5 +170,4 @@ def main():
     print("[INFO] Checkpoint updated.")
 
 if __name__ == "__main__":
-    print("[INFO] Starting sync script...")
     main()
