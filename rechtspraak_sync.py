@@ -7,6 +7,7 @@ import requests
 import xml.etree.ElementTree as ET
 from datasets import Dataset, DatasetDict
 from huggingface_hub import login
+from datasets import load_dataset
 import re
 
 CHECKPOINT_FILE = "checkpoint.json"
@@ -71,9 +72,9 @@ def scrub_names(text):
     return "\n".join(clean_lines).strip()
 
 # Fetch and walk through paginated Atom feeds
-def fetch_ecli_batch(after_timestamp=None, max_pages=5):
+def fetch_ecli_batch(after_timestamp=None, max_pages=30):
     collected = []
-    page_url = API_URL + "?type=uitspraak&return=DOC&max=100"
+    page_url = API_URL + "?type=uitspraak&return=DOC&max=2000"
     if after_timestamp:
         page_url += f"&published-min={after_timestamp}"
 
@@ -123,8 +124,6 @@ def fetch_uitspraak(ecli):
         print(f"[ERROR] Failed to fetch content for {ecli}: {e}")
     return None
 
-# Main
-
 def main():
     checkpoint = load_checkpoint()
     hf_token = os.getenv("HF_TOKEN")
@@ -133,23 +132,19 @@ def main():
     login(token=hf_token)
 
     print("[INFO] Fetching new ECLIs...")
-    new_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=10)
-    print(f"[INFO] Got {len(new_eclis)} ECLIs")
+    raw_eclis = fetch_ecli_batch(after_timestamp=checkpoint["last_published"], max_pages=30)
+    new_eclis = [e for e in raw_eclis if e["ecli"] not in checkpoint["done_eclis"]][:2000]
+    print(f"[INFO] Got {len(new_eclis)} new ECLIs to process")
 
     uitspraken = []
-    skipped = 0
     failed = 0
-
     for item in new_eclis:
         ecli = item["ecli"]
         published = item["published"]
 
-        if ecli in checkpoint["done_eclis"]:
-            skipped += 1
-            continue
-
         content = fetch_uitspraak(ecli)
         if not content:
+            print(f"[WARN] Could not fetch content for {ecli}")
             failed += 1
             continue
 
@@ -164,14 +159,22 @@ def main():
         checkpoint["last_published"] = published
         time.sleep(1)
 
-    print(f"[INFO] Skipped already processed: {skipped}")
     print(f"[INFO] Failed to fetch: {failed}")
     print(f"[INFO] Collected new: {len(uitspraken)}")
 
     if uitspraken:
-        print(f"[INFO] Uploading {len(uitspraken)} to HuggingFace")
-        dataset = Dataset.from_list(uitspraken)
-        dataset.push_to_hub(HF_REPO)
+        print(f"[INFO] Merging with existing dataset on Hugging Face...")
+        try:
+            existing = Dataset.from_list(
+                load_dataset(HF_REPO, split="train").to_list()
+            )
+            combined = Dataset.from_list(existing.to_list() + uitspraken)
+        except Exception as e:
+            print(f"[WARN] No existing dataset or failed to load it: {e}")
+            combined = Dataset.from_list(uitspraken)
+
+        print(f"[INFO] Uploading {len(combined)} uitspraken to Hugging Face...")
+        combined.push_to_hub(HF_REPO)
         checkpoint["empty_runs"] = 0
     else:
         checkpoint["empty_runs"] += 1
@@ -182,6 +185,3 @@ def main():
 
     save_checkpoint(checkpoint)
     print("[INFO] Checkpoint updated.")
-
-if __name__ == "__main__":
-    main()
