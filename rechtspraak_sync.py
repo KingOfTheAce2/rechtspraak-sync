@@ -14,6 +14,10 @@ HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
 API_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
 CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 
+# Load judge name list
+with open("judge_names.json", "r", encoding="utf-8") as f:
+    JUDGE_NAMES = json.load(f)
+
 # Load checkpoint if available
 def load_checkpoint():
     if os.path.exists(CHECKPOINT_FILE):
@@ -30,32 +34,36 @@ def save_checkpoint(state):
 # Balanced name scrubber
 
 def scrub_names(text):
-    # Match initials + surname e.g. J.J. van der Weel or W.M.G. Eekhof-de Vries
-    name_pattern = r"(?:[A-Z]\.[ ]?){1,4}(?:van der |de |van |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?"
-
-    # Match (get.) or w.g. or (getekend) patterns
+    name_pattern = r"((?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?)"
     signature_markers = ["(get.)", "w.g.", "(getekend)"]
 
     lines = text.splitlines()
     clean_lines = []
 
     for line in lines:
-        original_line = line
+        for full_name in JUDGE_NAMES:
+            parts = full_name.split()
+            if len(parts) < 2:
+                continue
 
-        # Remove judge names while keeping structure
-        line = re.sub(name_pattern, "[REDACTED]", line)
+            # Split prefix and name
+            prefix = " ".join(p for p in parts if "." not in p and p.lower() in {"mr.", "dhr.", "mw.", "prof.", "mr.drs.", "mr.dr.", "dr.", "drs."})
+            name_part = full_name.replace(prefix, "").strip()
 
-        # Remove signature prefixes
+            if name_part in line:
+                line = line.replace(name_part, "[NAAM]")
+
+        # Regex fallback for initials + surname
+        line = re.sub(r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)", r"\1[NAAM]\2", line)
+
         for marker in signature_markers:
             line = line.replace(marker, "")
 
-        # Remove specific footers/boilerplate
         if re.search(r"aldus vastgesteld|in tegenwoordigheid van|deze uitspraak|getekend", line, re.IGNORECASE):
             continue
 
-        # Clean spacing
         line = re.sub(r"\s+", " ", line).strip()
-        line = re.sub(r'^[,.:;-]+', '', line).strip()
+        line = re.sub(r"^[,.:;-]+", "", line).strip()
 
         if line:
             clean_lines.append(line)
