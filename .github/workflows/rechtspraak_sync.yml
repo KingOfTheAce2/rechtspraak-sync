@@ -1,9 +1,10 @@
-name: Rechtspraak Sync (24x Daily)
+name: Rechtspraak Sync (Every 30min)
 
 on:
-  workflow_dispatch:  # allows manual triggering
+  workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0,30 * * * *'
+
 jobs:
   sync-uitspraken:
     runs-on: ubuntu-latest
