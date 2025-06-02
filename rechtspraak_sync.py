@@ -61,7 +61,7 @@ def scrub_names(text):
 
 def fetch_ecli_batch(after_timestamp=None, max_pages=30):
     collected = []
-    page_url = API_URL + "?type=uitspraak&return=DOC&max=100"
+    page_url = API_URL + "?type=uitspraak&return=DOC&max=1000"
     if after_timestamp:
         page_url += f"&published-min={after_timestamp}"
 
