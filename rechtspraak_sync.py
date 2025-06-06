@@ -1,3 +1,4 @@
+import psutil
 import os
 import json
 import time
@@ -5,11 +6,12 @@ import datetime
 import requests
 import xml.etree.ElementTree as ET
 import re
-from datasets import Dataset, load_dataset
+from datasets import Dataset
 from huggingface_hub import login
 
 CHECKPOINT_FILE = "checkpoint.json"
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
+HF_SPLIT = "incoming"
 API_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
 CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 
@@ -42,7 +44,6 @@ def scrub_names(text):
             if name_part in line:
                 line = line.replace(name_part, "[NAAM]")
 
-        # Regex fallback
         line = re.sub(r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)", r"\1[NAAM]\2", line)
 
         for marker in signature_markers:
@@ -77,12 +78,10 @@ def fetch_ecli_batch(after_timestamp=None, max_pages=30):
             published_el = entry.find("atom:published", ns)
             updated_el = entry.find("atom:updated", ns)
             if ecli_el is None:
-                print("[WARN] Skipping entry with no ECLI.")
                 continue
             ecli = ecli_el.text
             published = (published_el or updated_el).text if (published_el or updated_el) is not None else None
             if not published:
-                print(f"[WARN] Skipping entry {ecli} — no published timestamp.")
                 continue
             collected.append({"ecli": ecli, "published": published})
 
@@ -105,6 +104,12 @@ def fetch_uitspraak(ecli):
     except Exception as e:
         print(f"[ERROR] Failed to fetch content for {ecli}: {e}")
     return None
+
+def log_resources(tag):
+    mem = psutil.virtual_memory()
+    print(f"[{tag}] Memory used: {mem.used / 1024 ** 2:.2f} MB / {mem.total / 1024 ** 2:.2f} MB")
+    print(f"[{tag}] CPU count: {psutil.cpu_count(logical=True)}")
+    print(f"[{tag}] Load avg: {os.getloadavg()}")
 
 def main():
     print(f"[TIME] Started at {datetime.datetime.now().isoformat()}")
@@ -129,14 +134,13 @@ def main():
 
         content = fetch_uitspraak(ecli)
         if not content:
-            print(f"[WARN] Could not fetch content for {ecli}")
             failed += 1
             continue
 
         cleaned = scrub_names(content)
         uitspraken.append({
             "url": f"https://uitspraken.rechtspraak.nl/details?id={ecli}",
-            "content": cleaned,
+            "content": re.sub(r"\s+", " ", cleaned.strip()),
             "source": "Rechtspraak"
         })
 
@@ -148,16 +152,9 @@ def main():
     print(f"[INFO] Collected new: {len(uitspraken)}")
 
     if uitspraken:
-        print(f"[INFO] Merging with existing dataset...")
-        try:
-            existing = Dataset.from_list(load_dataset(HF_REPO, split="train").to_list())
-            combined = Dataset.from_list(existing.to_list() + uitspraken)
-        except Exception as e:
-            print(f"[WARN] No existing dataset or failed to load it: {e}")
-            combined = Dataset.from_list(uitspraken)
-
-        print(f"[INFO] Uploading {len(combined)} uitspraken to Hugging Face...")
-        combined.push_to_hub(HF_REPO)
+        log_resources("Before upload")
+        Dataset.from_list(uitspraken).push_to_hub(HF_REPO, split=HF_SPLIT)
+        log_resources("After upload")
         checkpoint["empty_runs"] = 0
     else:
         checkpoint["empty_runs"] += 1
