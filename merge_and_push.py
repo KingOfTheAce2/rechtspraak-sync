@@ -5,7 +5,7 @@ from huggingface_hub import login
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
 MAIN_SPLIT = "train"
 INCOMING_SPLIT = "incoming"
-MIN_EXPECTED_SIZE = 100_000  # safeguard: don't push if below this
+MIN_EXPECTED_SIZE = 1_000  # safeguard: don't push if below this
 
 def main():
     print("[INFO] Starting merge and push...")
