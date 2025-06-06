@@ -1,5 +1,5 @@
 import os
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, Dataset, Features, Value
 from huggingface_hub import login
 
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
@@ -41,9 +41,15 @@ def main():
     print(f"[INFO] Uploading merged dataset to '{MAIN_SPLIT}'...")
     Dataset.from_list(merged_data).push_to_hub(HF_REPO, split=MAIN_SPLIT)
 
-    # Clear 'incoming'
+    # Clear 'incoming' split using explicit schema
     print(f"[INFO] Clearing '{INCOMING_SPLIT}' split...")
-    Dataset.from_list([]).push_to_hub(HF_REPO, split=INCOMING_SPLIT)
+    features = Features({
+        "url": Value("string"),
+        "content": Value("string"),
+        "source": Value("string")
+    })
+    empty_dataset = Dataset.from_dict({"url": [], "content": [], "source": []}, features=features)
+    empty_dataset.push_to_hub(HF_REPO, split=INCOMING_SPLIT)
 
     print("[✅] Merge and upload complete.")
 
