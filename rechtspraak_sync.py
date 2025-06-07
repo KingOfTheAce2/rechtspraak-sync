@@ -7,7 +7,7 @@ import requests
 import xml.etree.ElementTree as ET
 import re
 from datasets import Dataset
-from huggingface_hub import login
+from huggingface_hub import login, HfApi, hf_hub_download
 
 CHECKPOINT_FILE = "checkpoint.json"
 HF_REPO = "vGassen/dutch-court-cases-rechtspraak"
@@ -20,14 +20,33 @@ with open("judge_names.json", "r", encoding="utf-8") as f:
     JUDGE_NAMES = json.load(f)
 
 def load_checkpoint():
-    if os.path.exists(CHECKPOINT_FILE):
-        with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
+    try:
+        path = hf_hub_download(
+            repo_id=HF_REPO,
+            filename=CHECKPOINT_FILE,
+            repo_type="dataset",
+            token=os.getenv("HF_TOKEN"),
+            local_files_only=False,
+        )
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+    except Exception:
+        if os.path.exists(CHECKPOINT_FILE):
+            with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
     return {"last_published": None, "done_eclis": [], "empty_runs": 0}
 
-def save_checkpoint(state):
+def save_checkpoint(state, hf_token):
     with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
+    api = HfApi(token=hf_token)
+    api.upload_file(
+        path_or_fileobj=CHECKPOINT_FILE,
+        path_in_repo=CHECKPOINT_FILE,
+        repo_id=HF_REPO,
+        repo_type="dataset",
+        commit_message="Update checkpoint",
+    )
 
 def scrub_names(text):
     signature_markers = ["(get.)", "w.g.", "(getekend)"]
@@ -163,7 +182,7 @@ def main():
         else:
             print("[INFO] No new uitspraken to upload.")
 
-    save_checkpoint(checkpoint)
+    save_checkpoint(checkpoint, hf_token)
     print("[INFO] Checkpoint updated.")
 
 if __name__ == "__main__":
