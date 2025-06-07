@@ -16,15 +16,19 @@ def main():
     login(token=hf_token)
 
     try:
-        existing = load_dataset(HF_REPO, split=MAIN_SPLIT).to_list()
-        print(f"[INFO] Loaded {len(existing)} existing items from '{MAIN_SPLIT}' split.")
+        # Stream the existing split to avoid loading everything into memory
+        existing_stream = load_dataset(HF_REPO, split=MAIN_SPLIT, streaming=True)
+        existing_urls = {item["url"] for item in existing_stream}
+        existing_ds = load_dataset(HF_REPO, split=MAIN_SPLIT)
+        print(f"[INFO] Loaded existing split '{MAIN_SPLIT}' with {len(existing_ds)} items.")
     except Exception as e:
         print(f"[ERROR] Could not load existing dataset: {e}")
         return
 
     try:
-        incoming = load_dataset(HF_REPO, split=INCOMING_SPLIT).to_list()
-        print(f"[INFO] Loaded {len(incoming)} new items from '{INCOMING_SPLIT}' split.")
+        incoming_ds = load_dataset(HF_REPO, split=INCOMING_SPLIT)
+        incoming = [item for item in incoming_ds if item["url"] not in existing_urls]
+        print(f"[INFO] Loaded {len(incoming)} new unique items from '{INCOMING_SPLIT}' split.")
     except Exception as e:
         print(f"[ERROR] Failed to load incoming data: {e}")
         incoming = []
@@ -34,17 +38,21 @@ def main():
         return
 
     # Merge and deduplicate
-    merged_dict = {item["url"]: item for item in existing + incoming}
-    merged_data = list(merged_dict.values())
-    print(f"[INFO] Merged dataset has {len(merged_data)} unique items.")
+    from datasets import concatenate_datasets
+
+    incoming_ds_unique = Dataset.from_list(incoming)
+    merged_ds = concatenate_datasets([existing_ds, incoming_ds_unique])
+    merged_ds = merged_ds.remove_columns([col for col in merged_ds.column_names if col not in {"url", "content", "source"}])
+    merged_data_size = merged_ds.num_rows
+    print(f"[INFO] Merged dataset has {merged_data_size} items.")
 
     # SAFETY CHECK: avoid accidental overwrite with small dataset
-    if len(merged_data) < MIN_EXPECTED_SIZE:
-        raise RuntimeError(f"[ABORTED] Merged dataset only has {len(merged_data)} items — too small to safely push.")
+    if merged_data_size < MIN_EXPECTED_SIZE:
+        raise RuntimeError(f"[ABORTED] Merged dataset only has {merged_data_size} items — too small to safely push.")
 
     # Push to main split
     print(f"[INFO] Uploading merged dataset to '{MAIN_SPLIT}'...")
-    Dataset.from_list(merged_data).push_to_hub(HF_REPO, split=MAIN_SPLIT)
+    merged_ds.push_to_hub(HF_REPO, split=MAIN_SPLIT)
 
     # Clear incoming with correct schema
     print(f"[INFO] Clearing '{INCOMING_SPLIT}' split...")
