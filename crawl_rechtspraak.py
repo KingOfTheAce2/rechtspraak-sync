@@ -162,9 +162,12 @@ def crawl(
             time.sleep(REQUEST_PAUSE_SEC)
 
     if push_to_hub:
-        ds = datasets.load_dataset("json", data_files=str(out_file), split="train")
-        ds.push_to_hub(push_to_hub, private=True)
-        print(f"✅  Pushed {len(ds):,} records to {push_to_hub}")
+        if out_file.stat().st_size == 0:
+            print("⚠️  No new decisions found; skipping push.")
+        else:
+            ds = datasets.load_dataset("json", data_files=str(out_file), split="train")
+            ds.push_to_hub(push_to_hub, private=True)
+            print(f"✅  Pushed {len(ds):,} records to {push_to_hub}")
 
 
 ###############################################################################
