@@ -11,7 +11,8 @@ import datasets  # pip install datasets
 from tqdm import tqdm
 
 # Settings
-DATA_DIR = Path("data")
+HERE = Path(__file__).resolve().parent
+DATA_DIR = HERE / "data"
 OUTPUT_PATH = DATA_DIR / "rechtspraak_merged.jsonl"
 HUB_REPO = "vGassen/dutch-court-cases-rechtspraak" 
 
