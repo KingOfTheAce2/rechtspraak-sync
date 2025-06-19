@@ -28,8 +28,8 @@ import datasets            # pip install datasets
 BASE_SEARCH_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
 BASE_CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 USER_AGENT = (
-    "RechtspraakCrawler/0.5 (orga@example.org)  "
-    "— respects server‑load advice; one request per second."
+    "RechtspraakCrawler/0.5 (orga@example.org) "
+    "- respects server-load advice; one request per second."
 )
 MAX_PER_REQUEST = 1_000                          # hard limit set by API :contentReference[oaicite:0]{index=0}
 REQUEST_PAUSE_SEC = 1.05                         # “Don’t hammer the server” :contentReference[oaicite:1]{index=1}
