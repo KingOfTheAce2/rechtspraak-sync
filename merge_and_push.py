@@ -1,68 +1,89 @@
+#!/usr/bin/env python3
 """
-Merge Rechtspraak .jsonl fragments and push full dataset to Hugging Face Hub.
-"""
+Merge all Rechtspraak crawl shards found with --pattern and
+push the resulting dataset to the Hugging Face Hub.
 
+Example
+-------
+python merge_and_push.py \
+       --pattern "data/rs_*.jsonl" \
+       --repo   "organisation/rechtspraak-nl" \
+       --token  $HF_TOKEN
+"""
+from __future__ import annotations
+
+import argparse
+import glob
 import os
-import json
-from pathlib import Path
-from typing import List, Dict, Set
+import sys
+from typing import List
 
-import datasets  # pip install datasets
-from tqdm import tqdm
-
-# Settings
-HERE = Path(__file__).resolve().parent
-DATA_DIR = HERE / "data"
-OUTPUT_PATH = DATA_DIR / "rechtspraak_merged.jsonl"
-HUB_REPO = "vGassen/dutch-court-cases-rechtspraak" 
+from datasets import Dataset, DatasetDict, concatenate_datasets, load_dataset
+from huggingface_hub import HfApi, HfFolder
 
 
-def find_jsonl_files(data_dir: Path) -> List[Path]:
-    return sorted(data_dir.glob("*.jsonl"))
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+def merge_jsonl(pattern: str) -> Dataset:
+    """Read every JSON‑Lines file that matches *pattern* and concatenate them
+    into one in‑memory `datasets.Dataset`."""
+    files: List[str] = sorted(glob.glob(pattern))
+    if not files:
+        raise FileNotFoundError(f"No files matched {pattern!r}")
+
+    parts = [
+        load_dataset("json", data_files=f, split="train", streaming=False)
+        for f in files
+    ]
+    return concatenate_datasets(parts)
 
 
-def merge_jsonl_files(files: List[Path]) -> List[Dict]:
-    seen: Set[str] = set()
-    merged: List[Dict] = []
+def push_dataset(ds: Dataset, repo_id: str, token: str | None) -> None:
+    """Create the Hub repo if it does not yet exist and upload *ds*.
+    We wrap the single split in a `DatasetDict` because
+    `push_to_hub()` is implemented on `DatasetDict` and on `Dataset`
+    (newer versions) but the dict variant is the most future‑proof."""
+    api = HfApi(token=token or HfFolder.get_token())
+    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
 
-    for file in files:
-        with file.open(encoding="utf-8") as f:
-            for line in f:
-                try:
-                    record = json.loads(line)
-                    ecli = record.get("ecli")
-                    if ecli and ecli not in seen:
-                        seen.add(ecli)
-                        merged.append(record)
-                except json.JSONDecodeError:
-                    print(f"[warn] Skipped invalid JSON in: {file.name}")
-
-    return sorted(merged, key=lambda r: r.get("ecli", ""))
-
-
-def save_to_jsonl(records: List[Dict], out_file: Path) -> None:
-    out_file.parent.mkdir(exist_ok=True)
-    with out_file.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    dsdict = DatasetDict({"train": ds})
+    # keep individual Parquet files below 500 MB so we never hit
+    # the 100 MB Git‑LFS hard limit imposed by the Hub.
+    dsdict.push_to_hub(
+        repo_id,
+        token=api.token,
+        max_shard_size="500MB",  # safe default
+    )
+    print(
+        f"✅  Uploaded {len(ds):,} rows → https://huggingface.co/datasets/{repo_id}",
+        file=sys.stderr,
+    )
 
 
-def main():
-    jsonl_files = find_jsonl_files(DATA_DIR)
-    if not jsonl_files:
-        print("⚠️  No .jsonl files found.")
-        return
+# --------------------------------------------------------------------------- #
+# cli
+# --------------------------------------------------------------------------- #
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("--pattern", default="data/*.jsonl", help="Glob of crawl shards")
+    p.add_argument("--repo", required=True, help="Hub repo name, e.g. org/rechtspraak-nl")
+    p.add_argument(
+        "--token",
+        help="HF access token. "
+        "If omitted, the value in HF_TOKEN / HUGGINGFACE_TOKEN or the"
+        " token saved by `huggingface-cli login` is used.",
+    )
+    args = p.parse_args()
 
-    print(f"🔍 Found {len(jsonl_files)} JSONL files to merge.")
-    records = merge_jsonl_files(jsonl_files)
-    print(f"✅ Merged {len(records):,} unique decisions.")
-
-    save_to_jsonl(records, OUTPUT_PATH)
-    print(f"📁 Saved merged file to: {OUTPUT_PATH}")
-
-    ds = datasets.load_dataset("json", data_files=str(OUTPUT_PATH), split="train")
-    ds.push_to_hub(HUB_REPO, private=True)
-    print(f"🚀 Successfully pushed {len(ds):,} records to {HUB_REPO}")
+    ds = merge_jsonl(args.pattern)
+    push_dataset(
+        ds,
+        repo_id=args.repo,
+        token=args.token
+        or os.getenv("HF_TOKEN")
+        or os.getenv("HUGGINGFACE_TOKEN"),
+    )
 
 
 if __name__ == "__main__":
