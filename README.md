@@ -51,4 +51,16 @@ All processed texts are stripped of common Dutch judge signatures, clerical line
 Install dependencies:
 
 ```bash
-pip install datasets huggingface_hub requests
+pip install -r requirements.txt
+```
+
+### Running the crawler
+
+The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues.
+
+```bash
+python crawl_rechtspraak.py \
+  --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
+  --out data/rs_sync.jsonl \
+  --push organisation/rechtspraak-nl
+```
