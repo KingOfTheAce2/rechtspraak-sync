@@ -31,7 +31,7 @@ jobs:
           python crawl_rechtspraak.py \
             --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
             --out data/rs_sync.jsonl \
-            --push organisation/rechtspraak-nl
+            --push vGassen/dutch-court-cases-rechtspraak
 
   merge-and-push:
     needs: sync-uitspraken
