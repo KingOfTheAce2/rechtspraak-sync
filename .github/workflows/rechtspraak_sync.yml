@@ -1,6 +1,8 @@
 name: Rechtspraak Sync (Every 30min)
 
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:

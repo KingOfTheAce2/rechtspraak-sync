@@ -25,6 +25,7 @@ To retrieve complete cases, two API calls are required:
 - **Access**: Public
 - **Publisher**: Raad voor de Rechtspraak (Rijk)
 - **Contact**: [kennissystemen@rechtspraak.nl](mailto:kennissystemen@rechtspraak.nl)
+- **Code license**: see [LICENSE](LICENSE)
 
 Source catalog: [data.overheid.nl](https://data.overheid.nl)
 
@@ -63,4 +64,22 @@ python crawl_rechtspraak.py \
   --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
   --out data/rs_sync.jsonl \
   --push organisation/rechtspraak-nl
+```
+
+### Resuming and sharding
+
+Use `--state-file` to log processed ECLI identifiers so that a subsequent run
+can skip them:
+
+```bash
+python crawl_rechtspraak.py --state-file crawl.log --out data/part.jsonl
+```
+
+For large backfills the crawl can be split across multiple shards using
+`--shard-index` and `--num-shards`:
+
+```bash
+# Two shards running in parallel
+python crawl_rechtspraak.py --shard-index 0 --num-shards 2 --out data/s0.jsonl
+python crawl_rechtspraak.py --shard-index 1 --num-shards 2 --out data/s1.jsonl
 ```
