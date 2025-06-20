@@ -63,7 +63,7 @@ The crawler respects the publisher's rate limit by sending one request per secon
 python crawl_rechtspraak.py \
   --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
   --out data/rs_sync.jsonl \
-  --push organisation/rechtspraak-nl
+  --push vGassen/dutch-court-cases-rechtspraak
 ```
 
 ### Resuming and sharding

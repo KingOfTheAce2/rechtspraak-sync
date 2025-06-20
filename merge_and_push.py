@@ -7,8 +7,11 @@ Example
 -------
 python merge_and_push.py \
        --pattern "data/rs_*.jsonl" \
-       --repo   "organisation/rechtspraak-nl" \
+       --repo   "vGassen/dutch-court-cases-rechtspraak" \
        --token  $HF_TOKEN
+
+If ``--repo`` is omitted, ``vGassen/dutch-court-cases-rechtspraak`` will be
+used or the value of the ``HF_REPO`` environment variable if set.
 """
 from __future__ import annotations
 
@@ -20,6 +23,9 @@ from typing import List
 
 from datasets import Dataset, DatasetDict, concatenate_datasets, load_dataset
 from huggingface_hub import HfApi, HfFolder
+
+
+DEFAULT_REPO = "vGassen/dutch-court-cases-rechtspraak"
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +73,11 @@ def push_dataset(ds: Dataset, repo_id: str, token: str | None) -> None:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--pattern", default="data/*.jsonl", help="Glob of crawl shards")
-    p.add_argument("--repo", required=True, help="Hub repo name, e.g. org/rechtspraak-nl")
+    p.add_argument(
+        "--repo",
+        default=os.getenv("HF_REPO", DEFAULT_REPO),
+        help="Hub repo name (default: %(default)s)",
+    )
     p.add_argument(
         "--token",
         help="HF access token. "
