@@ -57,13 +57,20 @@ pip install -r requirements.txt
 
 ### Running the crawler
 
-The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues.
+The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues. Because over 800k decisions are available, long crawls can be resumed via the state file described below.
 
 ```bash
 python crawl_rechtspraak.py \
   --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
   --out data/rs_sync.jsonl \
   --push vGassen/dutch-court-cases-rechtspraak
+```
+
+A minimal example using an internal `checkpoint.json` for automatic resumption
+and uploading is available via `rechtspraak_crawler.py`:
+
+```bash
+HF_TOKEN=your_token python rechtspraak_crawler.py
 ```
 
 ### Resuming and sharding
