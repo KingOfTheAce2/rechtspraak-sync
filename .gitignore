@@ -1,0 +1,12 @@
+# Ignore virtual environments
+venv/
+.env
+
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# Local data and checkpoints
+checkpoint.json
+data/
+
