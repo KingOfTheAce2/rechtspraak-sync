@@ -1,10 +1,17 @@
-import os
+"""Utility script to fetch and upload Rechtspraak court decisions."""
+
+from __future__ import annotations
+
+import argparse
 import json
-import time
+import logging
+import os
 import re
-import requests
-from html import unescape
+import time
 import xml.etree.ElementTree as ET
+from typing import List, Dict
+
+import requests
 from datasets import Dataset
 from huggingface_hub import login
 
@@ -15,32 +22,47 @@ CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 USER_AGENT = "RechtspraakCrawler/1.0 (example@example.org)"
 REQUEST_PAUSE = 1.0
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
 # Load judge name list relative to this file
 NAMES_PATH = os.path.join(os.path.dirname(__file__), "judge_names.json")
 with open(NAMES_PATH, "r", encoding="utf-8") as f:
     JUDGE_NAMES = json.load(f)
 
 
-def load_checkpoint():
+def load_checkpoint() -> Dict[str, object]:
+    """Load crawler state from disk."""
+
     if os.path.exists(CHECKPOINT_FILE):
         with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"last_published": None, "done_eclis": [], "empty_runs": 0}
+    return {"last_published": None, "current_offset": 0}
 
 
-def save_checkpoint(state: dict) -> None:
+def save_checkpoint(state: Dict[str, object]) -> None:
+    """Persist crawler state to disk."""
+
     with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
 def _session() -> requests.Session:
+    """Configure and return a reusable :class:`requests.Session`."""
+
     s = requests.Session()
     s.headers.update({"User-Agent": USER_AGENT, "Accept": "application/xml"})
     s.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
     return s
 
 
+NAME_REGEX = re.compile(
+    r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)"
+)
+
+
 def scrub_names(text: str) -> str:
+    """Remove personal names and signatures from a decision."""
+
     signature_markers = ["(get.)", "w.g.", "(getekend)"]
 
     lines = text.splitlines()
@@ -58,11 +80,7 @@ def scrub_names(text: str) -> str:
             if name_part and name_part in line:
                 line = line.replace(name_part, "[NAAM]")
 
-        line = re.sub(
-            r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)",
-            r"\1[NAAM]\2",
-            line,
-        )
+        line = NAME_REGEX.sub(r"\1[NAAM]\2", line)
         for marker in signature_markers:
             line = line.replace(marker, "")
 
@@ -78,45 +96,40 @@ def scrub_names(text: str) -> str:
     return "\n".join(clean_lines).strip()
 
 
-def fetch_ecli_batch(
-    session: requests.Session, before_timestamp: str | None = None, max_pages: int = 5
-) -> list[dict]:
-    collected: list[dict] = []
-    params = {"type": "uitspraak", "return": "DOC", "max": 100}
-    if before_timestamp:
-        params["modified-max"] = before_timestamp
-    page_url = API_URL
+def fetch_ecli_page(session: requests.Session, since: str | None, offset: int) -> List[Dict[str, str]]:
+    """Fetch a single page of ECLIs starting at ``offset``."""
 
-    pages = 0
-    while page_url and pages < max_pages:
-        resp = session.get(page_url, params=params if pages == 0 else None, timeout=60)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        ns = {"atom": "http://www.w3.org/2005/Atom"}
+    params = {
+        "type": "uitspraak",
+        "return": "DOC",
+        "max": 1000,
+        "from": offset,
+        "sort": "ASC",
+    }
+    if since:
+        params["modified"] = since
 
-        for entry in root.findall("atom:entry", ns):
-            ecli_el = entry.find("atom:id", ns)
-            if ecli_el is None:
-                continue
-            published_el = entry.find("atom:updated", ns) or entry.find("atom:published", ns)
-            if published_el is None:
-                continue
-            collected.append({"ecli": ecli_el.text, "published": published_el.text})
+    resp = session.get(API_URL, params=params, timeout=60)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
 
-        next_link = root.find("atom:link[@rel='next']", ns)
-        if next_link is not None:
-            href = next_link.attrib.get("href")
-            page_url = unescape(href) if href else None
-        else:
-            page_url = None
-        params = None
-        pages += 1
-        time.sleep(REQUEST_PAUSE)
+    batch: List[Dict[str, str]] = []
+    for entry in root.findall("atom:entry", ns):
+        ecli_el = entry.find("atom:id", ns)
+        if ecli_el is None:
+            continue
+        published_el = entry.find("atom:updated", ns) or entry.find("atom:published", ns)
+        if published_el is None:
+            continue
+        batch.append({"ecli": ecli_el.text, "published": published_el.text})
 
-    return collected
+    return batch
 
 
 def fetch_uitspraak(session: requests.Session, ecli: str) -> str | None:
+    """Return the plain-text body for ``ecli`` or ``None`` if missing."""
+
     resp = session.get(CONTENT_URL, params={"id": ecli}, timeout=60)
     resp.raise_for_status()
     root = ET.fromstring(resp.content)
@@ -128,6 +141,10 @@ def fetch_uitspraak(session: requests.Session, ecli: str) -> str | None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", action="store_true", help="resume from saved offset")
+    args = parser.parse_args()
+
     state = load_checkpoint()
     token = os.getenv("HF_TOKEN")
     if not token:
@@ -135,42 +152,53 @@ def main() -> None:
     login(token=token)
     session = _session()
 
-    print("[INFO] Fetching new ECLIs...")
-    batch = fetch_ecli_batch(session, before_timestamp=state["last_published"], max_pages=10)
-    print(f"[INFO] Got {len(batch)} ECLIs")
+    offset = state.get("current_offset", 0) if args.resume else 0
+    if not args.resume:
+        state["current_offset"] = 0
 
-    uitspraken: list[dict] = []
-    for item in batch:
-        ecli = item["ecli"]
-        if ecli in state["done_eclis"]:
+    while True:
+        try:
+            batch = fetch_ecli_page(session, state.get("last_published"), offset)
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Page @ offset %s failed: %s", offset, exc)
+            time.sleep(REQUEST_PAUSE * 5)
             continue
-        content = fetch_uitspraak(session, ecli)
-        if not content:
-            continue
-        cleaned = scrub_names(content)
-        uitspraken.append({
-            "url": f"https://uitspraken.rechtspraak.nl/details?id={ecli}",
-            "content": cleaned,
-            "source": "Rechtspraak",
-        })
-        state["done_eclis"].append(ecli)
-        state["last_published"] = item["published"]
-        time.sleep(REQUEST_PAUSE)
 
-    if uitspraken:
-        print(f"[INFO] Uploading {len(uitspraken)} decisions to HuggingFace")
-        ds = Dataset.from_list(uitspraken)
-        ds.push_to_hub(HF_REPO)
-        state["empty_runs"] = 0
-    else:
-        state["empty_runs"] = state.get("empty_runs", 0) + 1
-        if state["empty_runs"] >= 5:
-            print("[WARN] No new uitspraken found in the last 5 runs.")
-        else:
-            print("[INFO] No new uitspraken to upload.")
+        if not batch:
+            break
 
+        records: List[Dict[str, str]] = []
+        for item in batch:
+            content = fetch_uitspraak(session, item["ecli"])
+            if not content:
+                continue
+            cleaned = scrub_names(content)
+            records.append(
+                {
+                    "url": f"https://uitspraken.rechtspraak.nl/details?id={item['ecli']}",
+                    "content": cleaned,
+                    "source": "Rechtspraak",
+                }
+            )
+            state["last_published"] = item["published"]
+            time.sleep(REQUEST_PAUSE)
+
+        if records:
+            logging.info("Uploading %d decisions", len(records))
+            ds = Dataset.from_list(records)
+            ds.push_to_hub(HF_REPO, token=token)
+
+        offset += len(batch)
+        state["current_offset"] = offset
+        save_checkpoint(state)
+        logging.info("Checkpoint saved @ offset %d", offset)
+
+        if len(batch) < 1000:
+            break
+
+    state["current_offset"] = 0
     save_checkpoint(state)
-    print("[INFO] Checkpoint updated.")
+    logging.info("Finished crawl")
 
 
 if __name__ == "__main__":

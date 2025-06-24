@@ -67,7 +67,8 @@ python crawl_rechtspraak.py \
 ```
 
 A minimal example using an internal `checkpoint.json` for automatic resumption
-and uploading is available via `rechtspraak_crawler.py`:
+and uploading is available via `rechtspraak_crawler.py`. Pass `--resume` to
+continue an interrupted crawl:
 
 ```bash
 HF_TOKEN=your_token python rechtspraak_crawler.py
