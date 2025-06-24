@@ -77,15 +77,18 @@ def scrub_names(text: str) -> str:
     return "\n".join(clean_lines).strip()
 
 
-def fetch_ecli_batch(session: requests.Session, before_timestamp: str | None = None, max_pages: int = 5) -> list[dict]:
+def fetch_ecli_batch(
+    session: requests.Session, before_timestamp: str | None = None, max_pages: int = 5
+) -> list[dict]:
     collected: list[dict] = []
-    page_url = f"{API_URL}?type=uitspraak&return=DOC&max=100"
+    params = {"type": "uitspraak", "return": "DOC", "max": 100}
     if before_timestamp:
-        page_url += f"&modified-max={before_timestamp}"
+        params["modified-max"] = before_timestamp
+    page_url = API_URL
 
     pages = 0
     while page_url and pages < max_pages:
-        resp = session.get(page_url, timeout=60)
+        resp = session.get(page_url, params=params if pages == 0 else None, timeout=60)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -101,6 +104,7 @@ def fetch_ecli_batch(session: requests.Session, before_timestamp: str | None = N
 
         next_link = root.find("atom:link[@rel='next']", ns)
         page_url = next_link.attrib.get("href") if next_link is not None else None
+        params = None
         pages += 1
         time.sleep(REQUEST_PAUSE)
 
