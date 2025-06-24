@@ -3,6 +3,7 @@ import json
 import time
 import re
 import requests
+from html import unescape
 import xml.etree.ElementTree as ET
 from datasets import Dataset
 from huggingface_hub import login
@@ -103,7 +104,11 @@ def fetch_ecli_batch(
             collected.append({"ecli": ecli_el.text, "published": published_el.text})
 
         next_link = root.find("atom:link[@rel='next']", ns)
-        page_url = next_link.attrib.get("href") if next_link is not None else None
+        if next_link is not None:
+            href = next_link.attrib.get("href")
+            page_url = unescape(href) if href else None
+        else:
+            page_url = None
         params = None
         pages += 1
         time.sleep(REQUEST_PAUSE)
