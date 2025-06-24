@@ -77,11 +77,11 @@ def scrub_names(text: str) -> str:
     return "\n".join(clean_lines).strip()
 
 
-def fetch_ecli_batch(session: requests.Session, after_timestamp: str | None = None, max_pages: int = 5) -> list[dict]:
+def fetch_ecli_batch(session: requests.Session, before_timestamp: str | None = None, max_pages: int = 5) -> list[dict]:
     collected: list[dict] = []
     page_url = f"{API_URL}?type=uitspraak&return=DOC&max=100"
-    if after_timestamp:
-        page_url += f"&modified-min={after_timestamp}"
+    if before_timestamp:
+        page_url += f"&modified-max={before_timestamp}"
 
     pages = 0
     while page_url and pages < max_pages:
@@ -127,7 +127,7 @@ def main() -> None:
     session = _session()
 
     print("[INFO] Fetching new ECLIs...")
-    batch = fetch_ecli_batch(session, after_timestamp=state["last_published"], max_pages=10)
+    batch = fetch_ecli_batch(session, before_timestamp=state["last_published"], max_pages=10)
     print(f"[INFO] Got {len(batch)} ECLIs")
 
     uitspraken: list[dict] = []
