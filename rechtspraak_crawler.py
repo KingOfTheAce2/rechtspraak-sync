@@ -78,6 +78,14 @@ def _session() -> "requests.Session":
     return s
 
 
+def parse_iso_date(value: str) -> datetime.date:
+    """Return ``value`` parsed to a ``date`` supporting ``Z`` timezone suffix."""
+
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value).date()
+
+
 NAME_REGEX = re.compile(
     r"(\(?)(?:[A-Z]\.? ?){1,4}(?:van den |van der |van |de |den )?[A-Z][a-z]+(?:-[A-Z][a-z]+)?(\)?)"
 )
@@ -191,8 +199,8 @@ def main() -> None:
     global REQUEST_PAUSE
     REQUEST_PAUSE = args.delay
 
-    start_date = datetime.fromisoformat(args.start_date).date() if args.start_date else None
-    end_date = datetime.fromisoformat(args.end_date).date() if args.end_date else None
+    start_date = parse_iso_date(args.start_date) if args.start_date else None
+    end_date = parse_iso_date(args.end_date) if args.end_date else None
 
     offset = args.start_offset
     if args.resume:
@@ -216,7 +224,7 @@ def main() -> None:
         for item in batch:
             if processed >= args.max_items:
                 break
-            pub_dt = datetime.fromisoformat(item["published"]).date()
+            pub_dt = parse_iso_date(item["published"])
             if start_date and pub_dt < start_date:
                 continue
             if end_date and pub_dt > end_date:
