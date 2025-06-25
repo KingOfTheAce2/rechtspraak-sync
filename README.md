@@ -74,6 +74,17 @@ continue an interrupted crawl:
 HF_TOKEN=your_token python rechtspraak_crawler.py
 ```
 
+Additional flags let you control the crawl window or pagination offset:
+
+```bash
+HF_TOKEN=your_token python rechtspraak_crawler.py \
+  --max-items 1000 \
+  --start-offset 0 \
+  --start-date 2020-01-01 \
+  --end-date 2020-12-31 \
+  --delay 1.0
+```
+
 ### Resuming and sharding
 
 Use `--state-file` to log processed ECLI identifiers so that a subsequent run
