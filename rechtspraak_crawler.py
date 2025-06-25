@@ -10,11 +10,25 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, TYPE_CHECKING, Any
 
-import requests
-from datasets import Dataset
-from huggingface_hub import login
+try:
+    import requests  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled in _session
+    requests = None  # type: ignore
+
+if TYPE_CHECKING:  # pragma: no cover
+    import requests as requests_module
+
+try:
+    from datasets import Dataset  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled in main
+    Dataset = None  # type: ignore
+
+try:
+    from huggingface_hub import login  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled in main
+    login = None  # type: ignore
 
 CHECKPOINT_FILE = "checkpoint.json"
 HF_REPO = "vGassen/dutch-public-domain-texts"
@@ -49,8 +63,14 @@ def save_checkpoint(state: Dict[str, object]) -> None:
         json.dump(state, f, indent=2)
 
 
-def _session() -> requests.Session:
+def _session() -> "requests.Session":
     """Configure and return a reusable :class:`requests.Session`."""
+
+    if requests is None:
+        raise ImportError(
+            "The 'requests' package is required to run the crawler. "
+            "Install dependencies via 'pip install -r requirements.txt'."
+        )
 
     s = requests.Session()
     s.headers.update({"User-Agent": USER_AGENT, "Accept": "application/xml"})
@@ -99,7 +119,7 @@ def scrub_names(text: str) -> str:
     return "\n".join(clean_lines).strip()
 
 
-def fetch_ecli_page(session: requests.Session, since: str | None, offset: int) -> List[Dict[str, str]]:
+def fetch_ecli_page(session: "requests.Session", since: str | None, offset: int) -> List[Dict[str, str]]:
     """Fetch a single page of ECLIs starting at ``offset``."""
 
     params = {
@@ -122,7 +142,9 @@ def fetch_ecli_page(session: requests.Session, since: str | None, offset: int) -
         ecli_el = entry.find("atom:id", ns)
         if ecli_el is None:
             continue
-        published_el = entry.find("atom:updated", ns) or entry.find("atom:published", ns)
+        published_el = entry.find("atom:updated", ns)
+        if published_el is None:
+            published_el = entry.find("atom:published", ns)
         if published_el is None:
             continue
         batch.append({"ecli": ecli_el.text, "published": published_el.text})
@@ -130,7 +152,7 @@ def fetch_ecli_page(session: requests.Session, since: str | None, offset: int) -
     return batch
 
 
-def fetch_uitspraak(session: requests.Session, ecli: str) -> str | None:
+def fetch_uitspraak(session: "requests.Session", ecli: str) -> str | None:
     """Return the plain-text body for ``ecli`` or ``None`` if missing."""
 
     resp = session.get(CONTENT_URL, params={"id": ecli}, timeout=60)
@@ -157,6 +179,11 @@ def main() -> None:
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN not set")
+    if login is None:
+        raise ImportError(
+            "The 'huggingface_hub' package is required to upload results. "
+            "Install dependencies via 'pip install -r requirements.txt'."
+        )
     login(token=token)
     session = _session()
 
@@ -211,6 +238,11 @@ def main() -> None:
 
         if records:
             logging.info("Uploading %d decisions", len(records))
+            if Dataset is None:
+                raise ImportError(
+                    "The 'datasets' package is required to upload results. "
+                    "Install dependencies via 'pip install -r requirements.txt'."
+                )
             ds = Dataset.from_list(records)
             ds.push_to_hub(HF_REPO, token=token)
 
