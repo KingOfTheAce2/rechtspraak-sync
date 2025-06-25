@@ -9,6 +9,7 @@ import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from typing import List, Dict
 
 import requests
@@ -20,7 +21,9 @@ HF_REPO = "vGassen/dutch-public-domain-texts"
 API_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
 CONTENT_URL = "https://data.rechtspraak.nl/uitspraken/content"
 USER_AGENT = "RechtspraakCrawler/1.0 (example@example.org)"
-REQUEST_PAUSE = 1.0
+
+DEFAULT_DELAY = 1.0
+REQUEST_PAUSE = DEFAULT_DELAY
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -142,7 +145,12 @@ def fetch_uitspraak(session: requests.Session, ecli: str) -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--max-items", type=int, default=500, help="Max XML records to fetch")
+    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY, help="Crawl delay (s)")
     parser.add_argument("--resume", action="store_true", help="resume from saved offset")
+    parser.add_argument("--start-offset", type=int, default=0, help="Initial ?start= offset")
+    parser.add_argument("--start-date", type=str, default=None, help="YYYY-MM-DD to begin crawl")
+    parser.add_argument("--end-date", type=str, default=None, help="YYYY-MM-DD to end crawl")
     args = parser.parse_args()
 
     state = load_checkpoint()
@@ -152,10 +160,20 @@ def main() -> None:
     login(token=token)
     session = _session()
 
-    offset = state.get("current_offset", 0) if args.resume else 0
-    if not args.resume:
-        state["current_offset"] = 0
+    # adjust crawl delay
+    global REQUEST_PAUSE
+    REQUEST_PAUSE = args.delay
 
+    start_date = datetime.fromisoformat(args.start_date).date() if args.start_date else None
+    end_date = datetime.fromisoformat(args.end_date).date() if args.end_date else None
+
+    offset = args.start_offset
+    if args.resume:
+        offset = state.get("current_offset", offset)
+    else:
+        state["current_offset"] = offset
+
+    processed = 0
     while True:
         try:
             batch = fetch_ecli_page(session, state.get("last_published"), offset)
@@ -169,6 +187,13 @@ def main() -> None:
 
         records: List[Dict[str, str]] = []
         for item in batch:
+            if processed >= args.max_items:
+                break
+            pub_dt = datetime.fromisoformat(item["published"]).date()
+            if start_date and pub_dt < start_date:
+                continue
+            if end_date and pub_dt > end_date:
+                continue
             content = fetch_uitspraak(session, item["ecli"])
             if not content:
                 continue
@@ -181,6 +206,7 @@ def main() -> None:
                 }
             )
             state["last_published"] = item["published"]
+            processed += 1
             time.sleep(REQUEST_PAUSE)
 
         if records:
@@ -193,7 +219,7 @@ def main() -> None:
         save_checkpoint(state)
         logging.info("Checkpoint saved @ offset %d", offset)
 
-        if len(batch) < 1000:
+        if processed >= args.max_items or len(batch) < 1000:
             break
 
     state["current_offset"] = 0
