@@ -5,7 +5,7 @@ import json
 import datetime
 from tqdm import tqdm
 
-from . import api_client, parser, config, state_manager, uploader
+from . import api_client, parser, config, state_manager, uploader, name_scrubber
 
 def process_and_save(metadata_iterator, output_file_path):
     """
@@ -27,6 +27,8 @@ def process_and_save(metadata_iterator, output_file_path):
 
             # 2. Parse XML to get text
             full_text = parser.parse_ruling_xml(xml_content)
+            full_text = name_scrubber.scrub_judge_names(full_text)
+            full_text = name_scrubber.scrub_gemachtigde_names(full_text)
 
             # 3. Format and save
             record = {
