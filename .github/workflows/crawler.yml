@@ -44,6 +44,13 @@ jobs:
           # Use the repository secret for authentication
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
 
+      - name: Run Historical Backfill Chunk (Scheduled)
+        if: github.event_name == 'schedule'
+        run: python -m src.main backfill
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+          BACKFILL_MAX_ITEMS: 10000
+
       - name: Run Historical Backfill (Manual)
         if: github.event_name == 'workflow_dispatch'
         run: python -m src.main backfill
@@ -52,8 +59,8 @@ jobs:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
 
       - name: Commit and push state file
-        # This step runs only after a manual backfill to save progress
-        if: github.event_name == 'workflow_dispatch'
+        # Save crawler progress for manual or scheduled backfills
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: |
           # Check if the state file has been modified
           if [[ -z $(git status -s data/crawler_state.json) ]]; then

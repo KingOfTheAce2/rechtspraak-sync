@@ -21,5 +21,9 @@ HF_DATASET_ID = os.getenv("HF_DATASET_ID", "vGassen/dutch-court-cases-rechtspraa
 HF_DATASET_PRIVATE = os.getenv("HF_DATASET_PRIVATE", "False").lower() in ("true", "1")
 
 
+# --- Backfill Configuration ---
+BACKFILL_MAX_ITEMS = int(os.getenv("BACKFILL_MAX_ITEMS", "10000"))
+
+
 # --- Create necessary directories ---
 DATA_DIR.mkdir(exist_ok=True)

@@ -8,5 +8,6 @@ __pycache__/
 
 # Local data and checkpoints
 checkpoint.json
-data/
+data/*
+!data/crawler_state.json
 

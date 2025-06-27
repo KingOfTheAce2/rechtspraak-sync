@@ -7,9 +7,14 @@ from tqdm import tqdm
 
 from . import api_client, parser, config, state_manager, uploader, name_scrubber
 
-def process_and_save(metadata_iterator, output_file_path):
-    """
-    Processes a stream of metadata, fetches full content, and saves to a file.
+def process_and_save(metadata_iterator, output_file_path, max_items=None, start_index=0):
+    """Process metadata entries and write them to a file.
+
+    Args:
+        metadata_iterator: Iterable yielding metadata dicts.
+        output_file_path: Path to the JSONL output file.
+        max_items: Optional maximum number of items to process.
+        start_index: Starting index used for state persistence.
     """
     print(f"✍️ Writing data to {output_file_path}...")
     processed_count = 0
@@ -38,12 +43,17 @@ def process_and_save(metadata_iterator, output_file_path):
             }
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
             processed_count += 1
-            
+
             # Save progress periodically for backfill
             if processed_count % config.API_MAX_RESULTS_PER_PAGE == 0 and 'backfill' in sys.argv:
-                # State is based on start index, not processed count
-                current_index = state_manager.load_state() + config.API_MAX_RESULTS_PER_PAGE
+                current_index = start_index + processed_count
                 state_manager.save_state(current_index)
+
+            if max_items and processed_count >= max_items:
+                if 'backfill' in sys.argv and processed_count % config.API_MAX_RESULTS_PER_PAGE != 0:
+                    current_index = start_index + processed_count
+                    state_manager.save_state(current_index)
+                break
 
     print(f"✅ Finished processing. Total cases saved in this run: {processed_count}")
     return processed_count
@@ -58,8 +68,13 @@ def backfill():
     output_file = config.DATA_DIR / "rechtspraak_backlog.jsonl"
 
     metadata_stream = api_client.get_metadata_batch(start_from=start_index)
-    
-    total_processed = process_and_save(metadata_stream, output_file)
+
+    total_processed = process_and_save(
+        metadata_stream,
+        output_file,
+        max_items=config.BACKFILL_MAX_ITEMS,
+        start_index=start_index,
+    )
 
     if total_processed > 0:
         uploader.upload_to_hf_hub(output_file)
