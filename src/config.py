@@ -17,7 +17,7 @@ LOG_FILE = CRAWLER_DIR / "crawler.log"
 
 # --- Hugging Face Hub Configuration ---
 # Example: "YourUsername/YourDatasetName"
-HF_DATASET_ID = os.getenv("HF_DATASET_ID", "YourUsername/dutch-court-cases-rechtspraak")
+HF_DATASET_ID = os.getenv("HF_DATASET_ID", "vGassen/dutch-court-cases-rechtspraak")
 HF_DATASET_PRIVATE = os.getenv("HF_DATASET_PRIVATE", "False").lower() in ("true", "1")
 
 
