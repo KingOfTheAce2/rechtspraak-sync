@@ -102,3 +102,12 @@ For large backfills the crawl can be split across multiple shards using
 python crawl_rechtspraak.py --shard-index 0 --num-shards 2 --out data/s0.jsonl
 python crawl_rechtspraak.py --shard-index 1 --num-shards 2 --out data/s1.jsonl
 ```
+
+### Environment Variables
+
+`BACKFILL_MAX_ITEMS` controls how many historical cases are processed in a
+single run. By default it is set to `10000`.
+
+```bash
+BACKFILL_MAX_ITEMS=5000 python -m src.main backfill
+```
