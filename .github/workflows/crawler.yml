@@ -1,0 +1,73 @@
+# .github/workflows/crawler.yml
+
+name: Rechtspraak Crawler
+
+on:
+  # Trigger 1: Daily schedule for the update script
+  # Runs at 02:00 UTC every day.
+  schedule:
+    - cron: '0 2 * * *'
+
+  # Trigger 2: Manual trigger for the backfill script
+  # Allows running the full historical scrape from the "Actions" tab in GitHub.
+  workflow_dispatch:
+
+jobs:
+  run-crawler:
+    runs-on: ubuntu-latest
+    
+    # Environment variables available to all steps
+    env:
+      # Set your Hugging Face Dataset ID here
+      # You can override the value from src/config.py
+      HF_DATASET_ID: "YourUsername/dutch-court-cases-rechtspraak"
+      PYTHON_VERSION: '3.11'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Daily Update (Scheduled)
+        if: github.event_name == 'schedule'
+        run: python -m src.main update_daily
+        env:
+          # Use the repository secret for authentication
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+
+      - name: Run Historical Backfill (Manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: python -m src.main backfill
+        env:
+          # Use the repository secret for authentication
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+
+      - name: Commit and push state file
+        # This step runs only after a manual backfill to save progress
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # Check if the state file has been modified
+          if [[ -z $(git status -s data/crawler_state.json) ]]; then
+            echo "State file not modified. No commit needed."
+            exit 0
+          fi
+          
+          echo "State file has been updated. Committing to repository..."
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/crawler_state.json
+          git commit -m "chore: Update crawler state"
+          git push
+        env:
+          # The GITHUB_TOKEN is automatically created by Actions
+          # It has permissions to push to the repository
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
