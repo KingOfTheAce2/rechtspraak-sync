@@ -57,7 +57,7 @@ pip install -r requirements.txt
 
 ### Running the crawler
 
-The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues. Because over 800k decisions are available, long crawls can be resumed via the state file described below.
+The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues. The delay can be adjusted via the `REQUEST_DELAY_SEC` environment variable. Because over 800k decisions are available, long crawls can be resumed via the state file described below.
 
 ```bash
 python crawl_rechtspraak.py \
@@ -107,6 +107,8 @@ python crawl_rechtspraak.py --shard-index 1 --num-shards 2 --out data/s1.jsonl
 
 `BACKFILL_MAX_ITEMS` controls how many historical cases are processed in a
 single run. By default it is set to `10000`.
+
+`REQUEST_DELAY_SEC` defines the delay between API requests. It defaults to `1.0` second.
 
 ```bash
 BACKFILL_MAX_ITEMS=5000 python -m src.main backfill

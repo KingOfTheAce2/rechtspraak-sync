@@ -4,10 +4,14 @@ import os
 from pathlib import Path
 
 # --- API Configuration ---
-BASE_API_URL = "http://data.rechtspraak.nl/uitspraken/zoeken"
-CONTENT_API_URL = "http://data.rechtspraak.nl/uitspraken/content"
-DEEPLINK_URL_PREFIX = "http://deeplink.rechtspraak.nl/uitspraak?id="
+BASE_API_URL = "https://data.rechtspraak.nl/uitspraken/zoeken"
+CONTENT_API_URL = "https://data.rechtspraak.nl/uitspraken/content"
+DEEPLINK_URL_PREFIX = "https://deeplink.rechtspraak.nl/uitspraak?id="
 API_MAX_RESULTS_PER_PAGE = 1000  # As per API documentation
+
+# User-Agent header and request throttling
+USER_AGENT = "rechtspraak-crawler/1.0"
+REQUEST_DELAY_SEC = float(os.getenv("REQUEST_DELAY_SEC", "1.0"))
 
 # --- Local File Paths ---
 CRAWLER_DIR = Path(__file__).parent.parent
