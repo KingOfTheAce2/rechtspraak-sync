@@ -6,6 +6,8 @@ from typing import Iterator, Dict, Any, Optional
 
 from . import config
 
+HEADERS = {"User-Agent": config.USER_AGENT}
+
 def get_metadata_batch(start_from: int = 0, modified_since: Optional[str] = None) -> Iterator[Dict[str, Any]]:
     """
     Fetches a paginated stream of metadata entries from the /zoeken endpoint.
@@ -30,8 +32,14 @@ def get_metadata_batch(start_from: int = 0, modified_since: Optional[str] = None
             params['modified'] = modified_since
 
         try:
-            response = requests.get(config.BASE_API_URL, params=params, timeout=60)
+            response = requests.get(
+                config.BASE_API_URL,
+                params=params,
+                headers=HEADERS,
+                timeout=60,
+            )
             response.raise_for_status()
+            time.sleep(config.REQUEST_DELAY_SEC)
 
             feed = response.text
             if not feed or "<entry>" not in feed:
@@ -73,8 +81,14 @@ def get_ruling_content(ecli_id: str, max_retries: int = 3) -> Optional[str]:
     params = {'id': ecli_id}
     for attempt in range(max_retries):
         try:
-            response = requests.get(config.CONTENT_API_URL, params=params, timeout=60)
+            response = requests.get(
+                config.CONTENT_API_URL,
+                params=params,
+                headers=HEADERS,
+                timeout=60,
+            )
             response.raise_for_status()
+            time.sleep(config.REQUEST_DELAY_SEC)
             return response.text
         except requests.exceptions.RequestException as e:
             wait = 2 ** attempt
