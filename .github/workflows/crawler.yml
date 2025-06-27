@@ -20,7 +20,7 @@ jobs:
     env:
       # Set your Hugging Face Dataset ID here
       # You can override the value from src/config.py
-      HF_DATASET_ID: "YourUsername/dutch-court-cases-rechtspraak"
+      HF_DATASET_ID: "vGassen/dutch-court-cases-rechtspraak"
       PYTHON_VERSION: '3.11'
 
     steps:
