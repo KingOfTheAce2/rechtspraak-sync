@@ -113,3 +113,7 @@ single run. By default it is set to `10000`.
 ```bash
 BACKFILL_MAX_ITEMS=5000 python -m src.main backfill
 ```
+
+Historical backfills write results to `data/rechtspraak_backlog_<start>_<timestamp>.jsonl`.
+Each run creates a new file so that uploads to the Hugging Face dataset do not
+overwrite earlier batches.
