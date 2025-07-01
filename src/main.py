@@ -65,7 +65,8 @@ def backfill():
     """
     print("🚀 Starting historical backfill...")
     start_index = state_manager.load_state()
-    output_file = config.DATA_DIR / "rechtspraak_backlog.jsonl"
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    output_file = config.DATA_DIR / f"rechtspraak_backlog_{start_index}_{timestamp}.jsonl"
 
     metadata_stream = api_client.get_metadata_batch(start_from=start_index)
 
