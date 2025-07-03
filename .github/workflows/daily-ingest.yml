@@ -1,0 +1,23 @@
+name: Daily Rechtspraak Ingest
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # Runs daily at 03:17 UTC
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Run daily ingest
+        run: python rechtspraak_ingest.py
