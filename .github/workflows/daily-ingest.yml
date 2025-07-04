@@ -19,5 +19,5 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      - name: Run daily ingest
-        run: python rechtspraak_ingest.py
+      - name: Run crawler
+        run: python crawler.py

@@ -13,6 +13,7 @@ from huggingface_hub import login
 HF_DATASET_ID = "vGassen/dutch-court-cases-rechtspraak"
 ALL_ECLIS_FILE = "all_rechtspraak_eclis.json"  # File to store all discovered ECLIs
 CHECKPOINT_FILE = "processed_eclis.json"      # File to track processed ECLIs
+JUDGES_FILE = "judge_names.json"              # List of judge names for scrubbing
 BATCH_SIZE = 100                              # Number of records to process and upload in one batch
 MAX_RECORDS_PER_RUN = 5000                    # Safety limit for a single execution of the script
 REQUEST_DELAY_S = 1.0                         # Delay between API requests to be polite
