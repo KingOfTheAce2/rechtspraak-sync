@@ -71,42 +71,52 @@ def fetch_all_eclis():
     """
     logging.info("Starting ECLI discovery process. This may take a long time...")
     discovered_eclis = load_json_set(ALL_ECLIS_FILE)
-    start_index = len(discovered_eclis)
     api_url = "https://data.rechtspraak.nl/uitspraken/zoeken"
-    
-    while True:
-        params = {"max": 1000, "from": start_index, "return": "META", "type": "uitspraak"}
-        logging.info(f"Fetching ECLIs from index {start_index}...")
-        try:
-            response = get_with_retry(api_url, params=params)
-            soup = BeautifulSoup(response.content, "xml")
-            entries = soup.find_all("entry")
 
-            if not entries:
-                logging.info("No more entries found. ECLI discovery complete.")
-                break
+    for doc_type in ("Uitspraak", "Conclusie"):
+        logging.info(f"Discovering ECLIs for type '{doc_type}'...")
+        start_index = 0
 
-            batch_eclis = {entry.id.text for entry in entries if entry.id}
-            newly_found = len(batch_eclis - discovered_eclis)
-            
-            if newly_found == 0 and len(entries) < 1000:
-                # If we get a partial page with no new ECLIs, we are likely at the end
-                logging.info("Reached a page with no new ECLIs. Concluding discovery.")
-                break
+        while True:
+            params = {
+                "max": 1000,
+                "from": start_index,
+                "return": "META",
+                "type": doc_type,
+            }
+            logging.info(f"Fetching {doc_type} ECLIs from index {start_index}...")
+            try:
+                response = get_with_retry(api_url, params=params)
+                soup = BeautifulSoup(response.content, "xml")
+                entries = soup.find_all("entry")
 
-            discovered_eclis.update(batch_eclis)
-            start_index += len(entries) # Move to the next page
-            
-            # Save progress periodically
-            if start_index % 5000 == 0:
-                save_json_set(discovered_eclis, ALL_ECLIS_FILE)
-                logging.info(f"Saved progress. Total ECLIs discovered: {len(discovered_eclis)}")
+                if not entries:
+                    logging.info("No more entries found. ECLI discovery complete.")
+                    break
 
-            time.sleep(REQUEST_DELAY_S)
+                batch_eclis = {entry.id.text for entry in entries if entry.id}
+                newly_found = len(batch_eclis - discovered_eclis)
+
+                if newly_found == 0 and len(entries) < 1000:
+                    # If we get a partial page with no new ECLIs, we are likely at the end
+                    logging.info("Reached a page with no new ECLIs. Concluding discovery.")
+                    break
+
+                discovered_eclis.update(batch_eclis)
+                start_index += len(entries)  # Move to the next page
+
+                # Save progress periodically
+                if start_index % 5000 == 0:
+                    save_json_set(discovered_eclis, ALL_ECLIS_FILE)
+                    logging.info(
+                        f"Saved progress. Total ECLIs discovered: {len(discovered_eclis)}"
+                    )
+
+                time.sleep(REQUEST_DELAY_S)
         
-        except requests.RequestException as e:
-            logging.error(f"A critical error occurred during ECLI discovery: {e}")
-            break
+            except requests.RequestException as e:
+                logging.error(f"A critical error occurred during ECLI discovery: {e}")
+                break
             
     save_json_set(discovered_eclis, ALL_ECLIS_FILE)
     logging.info(f"Finished ECLI discovery. Total ECLIs found: {len(discovered_eclis)}")
