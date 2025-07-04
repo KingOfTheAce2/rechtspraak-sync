@@ -45,24 +45,28 @@ def get_with_retry(url, *, params=None, timeout=30, attempts=MAX_RETRIES):
 def fetch_eclis(start=0, limit=2000):
     eclis = []
     base = "https://data.rechtspraak.nl/uitspraken/zoeken"
-    params = {
-        "max": 1000,
-        "from": start,
-        "return": "DOC",
-        "type": "uitspraak"
-    }
-    processed = 0
-    while processed < limit:
-        resp = get_with_retry(base, params=params)
-        if "<entry>" not in resp.text: break
-        for xml in resp.text.split("<entry>")[1:]:
-            start_tag = xml.find("<id>")
-            end_tag = xml.find("</id>")
-            if start_tag != -1 and end_tag != -1:
-                eclis.append(xml[start_tag+4:end_tag])
-        processed += params["max"]
-        params["from"] += params["max"]
-        time.sleep(1)
+
+    for doc_type in ("Uitspraak", "Conclusie"):
+        params = {
+            "max": 1000,
+            "from": start,
+            "return": "DOC",
+            "type": doc_type,
+        }
+        processed = 0
+        while processed < limit:
+            resp = get_with_retry(base, params=params)
+            if "<entry>" not in resp.text:
+                break
+            for xml in resp.text.split("<entry>")[1:]:
+                start_tag = xml.find("<id>")
+                end_tag = xml.find("</id>")
+                if start_tag != -1 and end_tag != -1:
+                    eclis.append(xml[start_tag + 4:end_tag])
+            processed += params["max"]
+            params["from"] += params["max"]
+            time.sleep(1)
+
     return eclis
 
 # --- 3. GET CONTENT FOR EACH ECLI ---
