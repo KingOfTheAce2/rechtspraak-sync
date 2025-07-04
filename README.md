@@ -57,6 +57,9 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+The requirements file includes `beautifulsoup4` which is needed for HTML/XML
+parsing in the crawler.
+
 ### Running the crawler
 
 The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues. The delay can be adjusted via the `REQUEST_DELAY_SEC` environment variable. Because over 800k decisions are available, long crawls can be resumed via the state file described below.
