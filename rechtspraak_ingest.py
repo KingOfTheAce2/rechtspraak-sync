@@ -13,6 +13,7 @@ CHECKPOINT_FILE = "processed_eclis.json"
 BATCH_SIZE = 200
 RUN_LIMIT = 2000
 REQUEST_DELAY = 1.1
+MAX_RETRIES = 3
 JUDGES_FILE = "judge_names.json"  # Your provided list
 
 # --- 1. LOAD STATE ---
@@ -27,6 +28,20 @@ def save_processed_eclis(processed):
         json.dump(sorted(list(processed)), f, indent=2)
 
 # --- 2. GET ECLI LIST FROM API ---
+def get_with_retry(url, *, params=None, timeout=30, attempts=MAX_RETRIES):
+    for i in range(attempts):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as exc:
+            if i == attempts - 1:
+                raise
+            backoff = 2 ** i
+            print(f"Request failed: {exc}. Retrying in {backoff}s...")
+            time.sleep(backoff)
+
+
 def fetch_eclis(start=0, limit=2000):
     eclis = []
     base = "https://data.rechtspraak.nl/uitspraken/zoeken"
@@ -38,8 +53,7 @@ def fetch_eclis(start=0, limit=2000):
     }
     processed = 0
     while processed < limit:
-        resp = requests.get(base, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = get_with_retry(base, params=params)
         if "<entry>" not in resp.text: break
         for xml in resp.text.split("<entry>")[1:]:
             start_tag = xml.find("<id>")
@@ -54,9 +68,12 @@ def fetch_eclis(start=0, limit=2000):
 # --- 3. GET CONTENT FOR EACH ECLI ---
 def fetch_content(ecli):
     url = "https://data.rechtspraak.nl/uitspraken/content"
-    resp = requests.get(url, params={"id": ecli}, timeout=30)
-    if resp.status_code == 200: return resp.text
-    return None
+    try:
+        resp = get_with_retry(url, params={"id": ecli})
+        return resp.text
+    except requests.RequestException as exc:
+        print(f"Failed to fetch {ecli}: {exc}")
+        return None
 
 # --- 4. NAME SCRUBBING ---
 def build_dutch_name_regex():
