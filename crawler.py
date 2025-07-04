@@ -173,9 +173,16 @@ def main():
     # Load ECLI lists
     all_eclis = load_json_set(ALL_ECLIS_FILE)
     if not all_eclis:
-        logging.error(f"ECLI list file '{ALL_ECLIS_FILE}' is empty or not found.")
-        logging.info("Please run the discovery function first: `fetch_all_eclis()`")
-        return
+        logging.info(
+            f"ECLI list file '{ALL_ECLIS_FILE}' is empty or not found. Running initial discovery..."
+        )
+        fetch_all_eclis()
+        all_eclis = load_json_set(ALL_ECLIS_FILE)
+        if not all_eclis:
+            logging.error(
+                f"Failed to populate '{ALL_ECLIS_FILE}' after discovery attempt."
+            )
+            return
 
     processed_eclis = load_json_set(CHECKPOINT_FILE)
     eclis_to_process = sorted(list(all_eclis - processed_eclis))

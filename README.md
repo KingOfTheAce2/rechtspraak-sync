@@ -68,6 +68,10 @@ The crawler respects the publisher's rate limit by sending one request per secon
 HF_TOKEN=your_token python crawler.py
 ```
 
+On the first run the script checks for an existing `all_rechtspraak_eclis.json`
+file containing the ECLI index. If it is missing, an initial discovery pass is
+executed automatically to create it before processing any cases.
+
 The crawler maintains a checkpoint so interrupted runs can resume automatically.
 You can limit the number of items or adjust the API delay using environment
 variables documented in the script.
