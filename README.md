@@ -37,11 +37,13 @@ The script performs the following:
 
 1. **Fetches ECLI IDs** from the Rechtspraak search API.
 2. **Downloads full decisions** in XML format.
-3. **Scrubs personal names and signatures** to ensure anonymization.
+3. **Scrubs personal names and signatures** to ensure anonymization using
+   `judge_names.json` for judge names and regex patterns for lawyers.
 4. **Saves results** in `.jsonl` format.
 5. **Pushes the dataset** to Hugging Face using `datasets` library.
 
-All processed texts are stripped of common Dutch judge signatures, clerical lines, and Dutch name patterns in parentheses.
+All processed texts are stripped of common Dutch judge signatures, clerical lines,
+and Dutch name patterns (including typical lawyer forms like `Mr. X`).
 
 ---
 
@@ -60,48 +62,18 @@ pip install -r requirements.txt
 The crawler respects the publisher's rate limit by sending one request per second and uses an ASCII-only `User-Agent` header to avoid encoding issues. The delay can be adjusted via the `REQUEST_DELAY_SEC` environment variable. Because over 800k decisions are available, long crawls can be resumed via the state file described below.
 
 ```bash
-python crawl_rechtspraak.py \
-  --since "$(date -u -d '1 hour ago' +'%Y-%m-%dT%H:%M:%S')" \
-  --out data/rs_sync.jsonl \
-  --push vGassen/dutch-court-cases-rechtspraak
+HF_TOKEN=your_token python crawler.py
 ```
 
-A minimal example using an internal `checkpoint.json` for automatic resumption
-and uploading is available via `rechtspraak_crawler.py`. Pass `--resume` to
-continue an interrupted crawl:
-
-```bash
-HF_TOKEN=your_token python rechtspraak_crawler.py
-```
-
-Additional flags let you control the crawl window or pagination offset:
-
-```bash
-HF_TOKEN=your_token python rechtspraak_crawler.py \
-  --max-items 1000 \
-  --start-offset 0 \
-  --start-date 2020-01-01 \
-  --end-date 2020-12-31 \
-  --delay 1.0
-```
+The crawler maintains a checkpoint so interrupted runs can resume automatically.
+You can limit the number of items or adjust the API delay using environment
+variables documented in the script.
 
 ### Resuming and sharding
 
-Use `--state-file` to log processed ECLI identifiers so that a subsequent run
-can skip them:
-
-```bash
-python crawl_rechtspraak.py --state-file crawl.log --out data/part.jsonl
-```
-
-For large backfills the crawl can be split across multiple shards using
-`--shard-index` and `--num-shards`:
-
-```bash
-# Two shards running in parallel
-python crawl_rechtspraak.py --shard-index 0 --num-shards 2 --out data/s0.jsonl
-python crawl_rechtspraak.py --shard-index 1 --num-shards 2 --out data/s1.jsonl
-```
+The script keeps track of processed ECLI identifiers in `processed_eclis.json`.
+If a run is interrupted simply execute `python crawler.py` again and it will
+continue where it left off.
 
 ### Environment Variables
 
