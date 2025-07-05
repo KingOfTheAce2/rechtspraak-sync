@@ -69,8 +69,9 @@ HF_TOKEN=your_token python crawler.py
 ```
 
 On the first run the script checks for an existing `all_rechtspraak_eclis.json`
-file containing the ECLI index. If it is missing, an initial discovery pass is
-executed automatically to create it before processing any cases.
+file containing the ECLI index. If it is missing, the crawler fetches only a
+limited batch of ECLI identifiers and stores progress in `discovery_state.json`
+so subsequent runs continue where the previous one stopped.
 
 The crawler maintains a checkpoint so interrupted runs can resume automatically.
 You can limit the number of items or adjust the API delay using environment
@@ -81,6 +82,8 @@ variables documented in the script.
 The script keeps track of processed ECLI identifiers in `processed_eclis.json`.
 If a run is interrupted simply execute `python crawler.py` again and it will
 continue where it left off.
+Uploaded records include a `batch` field. The last uploaded batch number is
+stored in `batch_state.json` so subsequent runs continue numbering sequentially.
 
 ### Environment Variables
 
@@ -88,6 +91,8 @@ continue where it left off.
 single run. By default it is set to `10000`.
 
 `REQUEST_DELAY_SEC` defines the delay between API requests. It defaults to `1.0` second.
+
+`DISCOVERY_BATCH_LIMIT` sets how many ECLI identifiers are fetched in a single run of `crawler.py`. This keeps GitHub Actions runs short. The default is `50000`.
 
 ```bash
 BACKFILL_MAX_ITEMS=5000 python -m src.main backfill
