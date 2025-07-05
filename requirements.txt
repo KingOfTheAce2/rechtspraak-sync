@@ -2,5 +2,5 @@ requests
 tqdm
 huggingface_hub
 datasets
-
 beautifulsoup4
+lxml
