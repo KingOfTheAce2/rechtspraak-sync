@@ -83,6 +83,7 @@ def fetch_all_eclis():
                 "from": start_index,
                 "return": "META",
                 "type": doc_type,
+                "q": "*",  # required as of mid-2024
             }
             logging.info(f"Fetching {doc_type} ECLIs from index {start_index}...")
             try:
