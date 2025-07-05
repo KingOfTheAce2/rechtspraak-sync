@@ -81,7 +81,7 @@ def fetch_all_eclis():
             params = {
                 "max": 1000,
                 "from": start_index,
-                "return": "META",
+                # "return": "META", # Remove or comment out this line
                 "type": doc_type,
                 "q": "*",  # required as of mid-2024
             }
@@ -114,7 +114,7 @@ def fetch_all_eclis():
                     )
 
                 time.sleep(REQUEST_DELAY_S)
-        
+            
             except requests.RequestException as e:
                 logging.error(f"A critical error occurred during ECLI discovery: {e}")
                 break
