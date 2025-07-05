@@ -11,13 +11,16 @@ from huggingface_hub import login
 
 # --- CONFIGURATION ---
 HF_DATASET_ID = "vGassen/dutch-court-cases-rechtspraak"
-ALL_ECLIS_FILE = "all_rechtspraak_eclis.json"  # File to store all discovered ECLIs
-CHECKPOINT_FILE = "processed_eclis.json"      # File to track processed ECLIs
-JUDGES_FILE = "judge_names.json"              # List of judge names for scrubbing
-BATCH_SIZE = 100                              # Number of records to process and upload in one batch
-MAX_RECORDS_PER_RUN = 5000                    # Safety limit for a single execution of the script
-REQUEST_DELAY_S = 1.0                         # Delay between API requests to be polite
-MAX_RETRIES = 4                               # Number of retries for failed requests
+ALL_ECLIS_FILE = "all_rechtspraak_eclis.json"      # File to store all discovered ECLIs
+CHECKPOINT_FILE = "processed_eclis.json"            # File to track processed ECLIs
+JUDGES_FILE = "judge_names.json"                    # List of judge names for scrubbing
+DISCOVERY_STATE_FILE = "discovery_state.json"        # Track discovery progress
+BATCH_INFO_FILE = "batch_state.json"                 # Track uploaded batch count
+BATCH_SIZE = 100                                      # Number of records per upload batch
+MAX_RECORDS_PER_RUN = 5000                            # Safety limit for a single execution of the script
+REQUEST_DELAY_S = 1.0                                 # Delay between API requests
+MAX_RETRIES = 4                                       # Number of retries for failed requests
+DISCOVERY_BATCH_LIMIT = int(os.getenv("DISCOVERY_BATCH_LIMIT", "50000"))
 
 # --- LOGGING SETUP ---
 logging.basicConfig(
@@ -64,26 +67,70 @@ def get_with_retry(url: str, params: dict = None, attempts: int = MAX_RETRIES) -
     raise requests.RequestException("All retry attempts failed.")
 
 
-def fetch_all_eclis():
-    """
-    Discovers all ECLIs from the Rechtspraak API and saves them to a file.
-    This function should be run once to populate the initial list of cases.
-    """
-    logging.info("Starting ECLI discovery process. This may take a long time...")
+DISCOVERY_DONE = -1
+
+
+def load_discovery_state() -> dict:
+    """Loads discovery progress for each document type."""
+    if not os.path.exists(DISCOVERY_STATE_FILE):
+        return {"Uitspraak": 0, "Conclusie": 0}
+    try:
+        with open(DISCOVERY_STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Could not load {DISCOVERY_STATE_FILE}: {e}")
+        return {"Uitspraak": 0, "Conclusie": 0}
+
+
+def save_discovery_state(state: dict):
+    """Persists discovery progress to disk."""
+    try:
+        with open(DISCOVERY_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        logging.error(f"Could not write {DISCOVERY_STATE_FILE}: {e}")
+
+
+def load_batch_number() -> int:
+    """Returns the last uploaded batch number."""
+    if not os.path.exists(BATCH_INFO_FILE):
+        return 0
+    try:
+        with open(BATCH_INFO_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return int(data.get("last_batch", 0))
+    except Exception:
+        return 0
+
+
+def save_batch_number(num: int):
+    """Persists the last uploaded batch number."""
+    try:
+        with open(BATCH_INFO_FILE, "w", encoding="utf-8") as f:
+            json.dump({"last_batch": num}, f, indent=2)
+    except Exception as e:
+        logging.error(f"Could not write {BATCH_INFO_FILE}: {e}")
+
+
+def discover_eclis_batch(limit: int = DISCOVERY_BATCH_LIMIT) -> int:
+    """Fetches a limited batch of new ECLIs and updates the discovery files."""
     discovered_eclis = load_json_set(ALL_ECLIS_FILE)
+    state = load_discovery_state()
     api_url = "https://data.rechtspraak.nl/uitspraken/zoeken"
 
+    total_new = 0
     for doc_type in ("Uitspraak", "Conclusie"):
-        logging.info(f"Discovering ECLIs for type '{doc_type}'...")
-        start_index = 0
+        start_index = state.get(doc_type, 0)
+        if start_index == DISCOVERY_DONE or total_new >= limit:
+            continue
+        logging.info(f"Discovering {doc_type} ECLIs starting at index {start_index}...")
 
-        while True:
+        while total_new < limit:
             params = {
                 "max": 1000,
                 "from": start_index,
-                # "return": "META", # Remove or comment out this line
                 "type": doc_type,
-                "q": "*",  # required as of mid-2024
+                "q": "*",
             }
             logging.info(f"Fetching {doc_type} ECLIs from index {start_index}...")
             try:
@@ -92,35 +139,34 @@ def fetch_all_eclis():
                 entries = soup.find_all("entry")
 
                 if not entries:
-                    logging.info("No more entries found. ECLI discovery complete.")
+                    state[doc_type] = DISCOVERY_DONE
+                    logging.info(f"No more entries for {doc_type}.")
                     break
 
                 batch_eclis = {entry.id.text for entry in entries if entry.id}
                 newly_found = len(batch_eclis - discovered_eclis)
+                discovered_eclis.update(batch_eclis)
+                total_new += newly_found
 
-                if newly_found == 0 and len(entries) < 1000:
-                    # If we get a partial page with no new ECLIs, we are likely at the end
-                    logging.info("Reached a page with no new ECLIs. Concluding discovery.")
+                start_index += len(entries)
+                state[doc_type] = start_index
+
+                if len(entries) < 1000:
+                    state[doc_type] = DISCOVERY_DONE
                     break
 
-                discovered_eclis.update(batch_eclis)
-                start_index += len(entries)  # Move to the next page
-
-                # Save progress periodically
-                if start_index % 5000 == 0:
-                    save_json_set(discovered_eclis, ALL_ECLIS_FILE)
-                    logging.info(
-                        f"Saved progress. Total ECLIs discovered: {len(discovered_eclis)}"
-                    )
+                if total_new >= limit:
+                    break
 
                 time.sleep(REQUEST_DELAY_S)
-            
             except requests.RequestException as e:
-                logging.error(f"A critical error occurred during ECLI discovery: {e}")
+                logging.error(f"Error during discovery: {e}")
                 break
-            
+
     save_json_set(discovered_eclis, ALL_ECLIS_FILE)
-    logging.info(f"Finished ECLI discovery. Total ECLIs found: {len(discovered_eclis)}")
+    save_discovery_state(state)
+    logging.info(f"Discovered {total_new} new ECLIs in this batch.")
+    return total_new
 
 
 # --- 2. DATA PROCESSING AND ANONYMIZATION ---
@@ -181,19 +227,16 @@ def main():
     if not judge_names:
         logging.warning(f"Could not load judge names from {JUDGES_FILE}. Proceeding without this anonymization step.")
 
-    # Load ECLI lists
+    # Ensure we have an up-to-date ECLI index
+    discovered = discover_eclis_batch()
+    if discovered:
+        logging.info(f"Discovered {discovered} ECLIs in this run.")
+
     all_eclis = load_json_set(ALL_ECLIS_FILE)
     if not all_eclis:
-        logging.info(
-            f"ECLI list file '{ALL_ECLIS_FILE}' is empty or not found. Running initial discovery..."
-        )
-        fetch_all_eclis()
-        all_eclis = load_json_set(ALL_ECLIS_FILE)
-        if not all_eclis:
-            logging.error(
-                f"Failed to populate '{ALL_ECLIS_FILE}' after discovery attempt."
-            )
-            return
+        logging.error(
+            f"'{ALL_ECLIS_FILE}' is missing or empty even after discovery.")
+        return
 
     processed_eclis = load_json_set(CHECKPOINT_FILE)
     eclis_to_process = sorted(list(all_eclis - processed_eclis))
@@ -207,15 +250,18 @@ def main():
     logging.info(f"Starting new run with {len(eclis_to_process)} ECLIs remaining.")
 
     eclis_for_this_run = eclis_to_process[:MAX_RECORDS_PER_RUN]
+    batch_number = load_batch_number()
     
     for i in range(0, len(eclis_for_this_run), BATCH_SIZE):
         batch_eclis = eclis_for_this_run[i:i+BATCH_SIZE]
         records_to_upload = []
         
-        logging.info(f"--- Processing Batch {i//BATCH_SIZE + 1} ---")
+        batch_number += 1
+        logging.info(f"--- Processing Batch {batch_number} ---")
         for ecli in batch_eclis:
             record = process_ecli(ecli, judge_names)
             if record:
+                record["batch"] = batch_number
                 records_to_upload.append(record)
             time.sleep(REQUEST_DELAY_S) # Be polite to the API
 
@@ -226,8 +272,11 @@ def main():
                 batch_dataset.push_to_hub(HF_DATASET_ID, private=False)
                 
                 # Update checkpoint file ONLY after successful upload
-                processed_eclis.update(ecli for r in records_to_upload if (ecli := re.search(r'id=(ECLI:[^&]+)', r['URL'])) )
+                processed_eclis.update(
+                    ecli for r in records_to_upload if (ecli := re.search(r"id=(ECLI:[^&]+)", r["URL"]))
+                )
                 save_json_set(processed_eclis, CHECKPOINT_FILE)
+                save_batch_number(batch_number)
                 logging.info("Upload and checkpoint successful.")
             except Exception as e:
                 logging.error(f"Failed to push batch to Hugging Face Hub: {e}")
@@ -239,9 +288,5 @@ def main():
     logging.info("Script run completed.")
 
 if __name__ == "__main__":
-    # To run the full scrape, you typically do two things:
-    # 1. Discover all cases (run this once, or periodically to update)
-    # fetch_all_eclis()
-    
-    # 2. Process the discovered cases (run this repeatedly until done)
+    # Running the script will discover new ECLIs and then process them.
     main()

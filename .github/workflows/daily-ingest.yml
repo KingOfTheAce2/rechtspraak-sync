@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      DISCOVERY_BATCH_LIMIT: 50000
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
