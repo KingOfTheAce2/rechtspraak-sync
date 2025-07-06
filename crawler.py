@@ -12,14 +12,14 @@ from huggingface_hub import login
 # --- CONFIGURATION ---
 HF_DATASET_ID = "vGassen/dutch-court-cases-rechtspraak"
 ALL_ECLIS_FILE = "all_rechtspraak_eclis.json"      # File to store all discovered ECLIs
-CHECKPOINT_FILE = "processed_eclis.json"            # File to track processed ECLIs
-JUDGES_FILE = "judge_names.json"                    # List of judge names for scrubbing
-DISCOVERY_STATE_FILE = "discovery_state.json"        # Track discovery progress
-BATCH_INFO_FILE = "batch_state.json"                 # Track uploaded batch count
-BATCH_SIZE = 100                                      # Number of records per upload batch
-MAX_RECORDS_PER_RUN = 5000                            # Safety limit for a single execution of the script
-REQUEST_DELAY_S = 1.0                                 # Delay between API requests
-MAX_RETRIES = 4                                       # Number of retries for failed requests
+CHECKPOINT_FILE = "processed_eclis.json"           # File to track processed ECLIs
+JUDGES_FILE = "judge_names.json"                   # List of judge names for scrubbing
+DISCOVERY_STATE_FILE = "discovery_state.json"      # Track discovery progress
+BATCH_INFO_FILE = "batch_state.json"               # Track uploaded batch count
+BATCH_SIZE = 100                                   # Number of records per upload batch
+MAX_RECORDS_PER_RUN = 5000                         # Safety limit for a single execution of the script
+REQUEST_DELAY_S = 1.0                              # Delay between API requests
+MAX_RETRIES = 4                                    # Number of retries for failed requests
 DISCOVERY_BATCH_LIMIT = int(os.getenv("DISCOVERY_BATCH_LIMIT", "50000"))
 
 # --- LOGGING SETUP ---
@@ -184,7 +184,8 @@ def anonymize_text(content: str, judge_names: set) -> str:
 
 def process_ecli(ecli: str, judge_names: set) -> dict | None:
     """Fetches, parses, and anonymizes the content for a single ECLI."""
-    content_url = "https://data.rechtspraak.nl/uitspraak"
+    # Corrected content_url based on the working previous script and PDF information.
+    content_url = "https://data.rechtspraak.nl/uitspraken/content" 
     try:
         ecli = ecli.replace('%', ':')
         response = get_with_retry(content_url, params={"id": ecli})
