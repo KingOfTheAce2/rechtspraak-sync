@@ -143,7 +143,7 @@ def discover_eclis_batch(limit: int = DISCOVERY_BATCH_LIMIT) -> int:
                     logging.info(f"No more entries for {doc_type}.")
                     break
 
-                batch_eclis = {entry.id.text for entry in entries if entry.id}
+                batch_eclis = {entry.id.text.replace('%', ':') for entry in entries if entry.id}
                 newly_found = len(batch_eclis - discovered_eclis)
                 discovered_eclis.update(batch_eclis)
                 total_new += newly_found
@@ -186,6 +186,7 @@ def process_ecli(ecli: str, judge_names: set) -> dict | None:
     """Fetches, parses, and anonymizes the content for a single ECLI."""
     content_url = "https://data.rechtspraak.nl/uitspraak"
     try:
+        ecli = ecli.replace('%', ':')
         response = get_with_retry(content_url, params={"id": ecli})
         soup = BeautifulSoup(response.content, "xml")
 

@@ -62,7 +62,7 @@ def fetch_eclis(start=0, limit=2000):
                 start_tag = xml.find("<id>")
                 end_tag = xml.find("</id>")
                 if start_tag != -1 and end_tag != -1:
-                    eclis.append(xml[start_tag + 4:end_tag])
+                    eclis.append(xml[start_tag + 4:end_tag].replace('%', ':'))
             processed += params["max"]
             params["from"] += params["max"]
             time.sleep(1)
@@ -73,7 +73,7 @@ def fetch_eclis(start=0, limit=2000):
 def fetch_content(ecli):
     url = "https://data.rechtspraak.nl/uitspraken/content"
     try:
-        resp = get_with_retry(url, params={"id": ecli})
+        resp = get_with_retry(url, params={"id": ecli.replace('%', ':')})
         return resp.text
     except requests.RequestException as exc:
         print(f"Failed to fetch {ecli}: {exc}")
@@ -125,11 +125,12 @@ def main():
         batch = eclis_to_process[i:i+BATCH_SIZE]
         batch_data = []
         for ecli in batch:
-            content = fetch_content(ecli)
+            clean_ecli = ecli.replace('%', ':')
+            content = fetch_content(clean_ecli)
             if not content or len(content) < 100: continue
             scrubbed = scrub_names(content, judge_names, name_regex)
             batch_data.append({
-                "URL": f"https://deeplink.rechtspraak.nl/uitspraak?id={ecli}",
+                "URL": f"https://deeplink.rechtspraak.nl/uitspraak?id={clean_ecli}",
                 "Content": scrubbed,
                 "Source": "Rechtspraak"
             })
