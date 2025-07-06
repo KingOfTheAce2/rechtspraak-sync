@@ -184,16 +184,20 @@ def anonymize_text(content: str, judge_names: set) -> str:
 
 def process_ecli(ecli: str, judge_names: set) -> dict | None:
     """Fetches, parses, and anonymizes the content for a single ECLI."""
-    # Corrected content_url based on the working previous script and PDF information.
-    content_url = "https://data.rechtspraak.nl/uitspraken/content" 
+    content_url = "https://data.rechtspraak.nl/uitspraken/content"
     try:
-        ecli = ecli.replace('%', ':')
-        response = get_with_retry(content_url, params={"id": ecli})
+        # The ECLI format in the URL should use colons
+        ecli_id = ecli.replace('%', ':')
+        response = get_with_retry(content_url, params={"id": ecli_id})
         soup = BeautifulSoup(response.content, "xml")
 
+        # Try to find 'uitspraak' tag first, if not found, try 'conclusie'
         content_tag = soup.find("uitspraak")
+        if not content_tag:
+            content_tag = soup.find("conclusie")
+
         if not content_tag or len(content_tag.get_text(strip=True)) < 100:
-            logging.warning(f"No meaningful content found for {ecli}. Skipping.")
+            logging.warning(f"No meaningful content found for {ecli_id}. Skipping.")
             return None
 
         content = content_tag.get_text(separator="\n", strip=True)
@@ -201,15 +205,16 @@ def process_ecli(ecli: str, judge_names: set) -> dict | None:
 
         # Find the official public URL
         link_tag = soup.find("atom:link", {"rel": "alternate", "type": "text/html"})
-        url = link_tag["href"] if link_tag else f"https://uitspraken.rechtspraak.nl/#!/details?id={ecli}"
+        # Construct a fallback URL if the atom:link is not present
+        url = link_tag["href"] if link_tag else f"https://uitspraken.rechtspraak.nl/#!/details?id={ecli_id}"
 
         return {"URL": url, "content": anonymized_content, "source": "Rechtspraak"}
 
     except requests.RequestException:
-        logging.error(f"Could not fetch content for {ecli} after multiple retries.")
+        logging.error(f"Could not fetch content for {ecli_id} after multiple retries.")
         return None
     except Exception as e:
-        logging.error(f"An unexpected error occurred while processing {ecli}: {e}")
+        logging.error(f"An unexpected error occurred while processing {ecli_id}: {e}")
         return None
 
 
@@ -260,11 +265,14 @@ def main():
         
         batch_number += 1
         logging.info(f"--- Processing Batch {batch_number} ---")
+        eclis_processed_in_batch = set()
         for ecli in batch_eclis:
             record = process_ecli(ecli, judge_names)
             if record:
                 record["batch"] = batch_number
                 records_to_upload.append(record)
+            # Add the original ECLI from the batch to the processed set for this batch
+            eclis_processed_in_batch.add(ecli)
             time.sleep(REQUEST_DELAY_S) # Be polite to the API
 
         if records_to_upload:
@@ -273,10 +281,8 @@ def main():
                 batch_dataset = Dataset.from_list(records_to_upload)
                 batch_dataset.push_to_hub(HF_DATASET_ID, private=False)
                 
-                # Update checkpoint file ONLY after successful upload
-                processed_eclis.update(
-                    ecli for r in records_to_upload if (ecli := re.search(r"id=(ECLI:[^&]+)", r["URL"]))
-                )
+                # Update checkpoint file with all ECLIs attempted in this batch
+                processed_eclis.update(eclis_processed_in_batch)
                 save_json_set(processed_eclis, CHECKPOINT_FILE)
                 save_batch_number(batch_number)
                 logging.info("Upload and checkpoint successful.")
@@ -285,7 +291,11 @@ def main():
                 logging.info("Aborting run to prevent data loss. Please check credentials and network.")
                 return # Stop the run if a push fails
         else:
-            logging.warning("No valid records were generated in this batch.")
+            # If no records were valid but we processed the batch, still update the checkpoint
+            logging.warning("No valid records were generated in this batch. Updating checkpoint to skip these ECLIs in the future.")
+            processed_eclis.update(eclis_processed_in_batch)
+            save_json_set(processed_eclis, CHECKPOINT_FILE)
+
 
     logging.info("Script run completed.")
 
