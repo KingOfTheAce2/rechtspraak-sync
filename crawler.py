@@ -16,9 +16,9 @@ CHECKPOINT_FILE = "processed_eclis.json"           # File to track processed ECL
 JUDGES_FILE = "judge_names.json"                   # List of judge names for scrubbing
 DISCOVERY_STATE_FILE = "discovery_state.json"      # Track discovery progress
 BATCH_INFO_FILE = "batch_state.json"               # Track uploaded batch count
-BATCH_SIZE = 100                                   # Number of records per upload batch
+BATCH_SIZE = 1000                                  # Number of records per upload batch
 MAX_RECORDS_PER_RUN = 5000                         # Safety limit for a single execution of the script
-REQUEST_DELAY_S = 1.0                              # Delay between API requests
+REQUEST_DELAY_S = 0.5                              # Delay between API requests
 MAX_RETRIES = 4                                    # Number of retries for failed requests
 DISCOVERY_BATCH_LIMIT = int(os.getenv("DISCOVERY_BATCH_LIMIT", "50000"))
 
@@ -208,7 +208,7 @@ def process_ecli(ecli: str, judge_names: set) -> dict | None:
         # Construct a fallback URL if the atom:link is not present
         url = link_tag["href"] if link_tag else f"https://uitspraken.rechtspraak.nl/#!/details?id={ecli_id}"
 
-        return {"URL": url, "content": anonymized_content, "source": "Rechtspraak"}
+        return {"url": url, "content": anonymized_content, "source": "Rechtspraak"}
 
     except requests.RequestException:
         logging.error(f"Could not fetch content for {ecli_id} after multiple retries.")
@@ -269,7 +269,6 @@ def main():
         for ecli in batch_eclis:
             record = process_ecli(ecli, judge_names)
             if record:
-                record["batch"] = batch_number
                 records_to_upload.append(record)
             # Add the original ECLI from the batch to the processed set for this batch
             eclis_processed_in_batch.add(ecli)
