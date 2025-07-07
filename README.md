@@ -84,6 +84,8 @@ If a run is interrupted simply execute `python crawler.py` again and it will
 continue where it left off.
 Uploaded records include a `batch` field. The last uploaded batch number is
 stored in `batch_state.json` so subsequent runs continue numbering sequentially.
+Each processed batch is uploaded as its own `data/batch_<n>.jsonl` file on the
+Hugging Face dataset, ensuring earlier batches remain available.
 
 ### Environment Variables
 

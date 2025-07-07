@@ -7,7 +7,7 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from datasets import Dataset
-from huggingface_hub import login
+from huggingface_hub import login, HfApi
 
 # --- CONFIGURATION ---
 HF_DATASET_ID = "vGassen/dutch-court-cases-rechtspraak"
@@ -228,6 +228,7 @@ def main():
         logging.error("HF_TOKEN environment variable not set. Please set it to your Hugging Face write token.")
         return
     login(token=hf_token)
+    hf_api = HfApi()
 
     # Load judge names for anonymization
     judge_names = load_json_set(JUDGES_FILE)
@@ -269,6 +270,7 @@ def main():
         for ecli in batch_eclis:
             record = process_ecli(ecli, judge_names)
             if record:
+                record["batch"] = batch_number
                 records_to_upload.append(record)
             # Add the original ECLI from the batch to the processed set for this batch
             eclis_processed_in_batch.add(ecli)
@@ -277,9 +279,24 @@ def main():
         if records_to_upload:
             try:
                 logging.info(f"Uploading {len(records_to_upload)} new records to Hugging Face Hub...")
-                batch_dataset = Dataset.from_list(records_to_upload)
-                batch_dataset.push_to_hub(HF_DATASET_ID, private=False)
-                
+
+                os.makedirs("data", exist_ok=True)
+                batch_file = os.path.join("data", f"batch_{batch_number}.jsonl")
+                with open(batch_file, "w", encoding="utf-8") as f:
+                    for rec in records_to_upload:
+                        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+                hf_api.upload_file(
+                    path_or_fileobj=batch_file,
+                    path_in_repo=f"data/batch_{batch_number}.jsonl",
+                    repo_id=HF_DATASET_ID,
+                    repo_type="dataset",
+                    token=hf_token,
+                    commit_message=f"Add batch {batch_number}"
+                )
+
+                os.remove(batch_file)
+
                 # Update checkpoint file with all ECLIs attempted in this batch
                 processed_eclis.update(eclis_processed_in_batch)
                 save_json_set(processed_eclis, CHECKPOINT_FILE)
