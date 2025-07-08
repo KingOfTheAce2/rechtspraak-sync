@@ -87,6 +87,12 @@ stored in `batch_state.json` so subsequent runs continue numbering sequentially.
 Each processed batch is uploaded as its own `data/batch_<n>.jsonl` file on the
 Hugging Face dataset, ensuring earlier batches remain available.
 
+The state files (`processed_eclis.json`, `discovery_state.json`,
+`batch_state.json`, and `all_rechtspraak_eclis.json`) are version controlled in
+this repository. The GitHub Actions workflow commits any changes after each run
+so future executions resume from the last processed ECLI and continue numbering
+batches without overwriting previous uploads.
+
 ### Environment Variables
 
 `BACKFILL_MAX_ITEMS` controls how many historical cases are processed in a
