@@ -5,6 +5,9 @@ on:
     - cron: '17 3 * * *'   # Runs daily at 03:17 UTC
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
@@ -25,8 +28,6 @@ jobs:
       - name: Run crawler
         run: python crawler.py
       - name: Commit state files
-        env:
-          GIT_TOKEN: ${{ secrets.PUSH_TOKEN }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -35,5 +36,5 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update crawler state"
-            git push https://${GIT_TOKEN}@github.com/KingOfTheAce2/rechtspraak-sync.git HEAD:main
+            git push
           fi
